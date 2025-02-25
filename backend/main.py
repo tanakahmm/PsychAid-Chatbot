@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from typing import List, Optional
+from datetime import datetime
 import os
 import logging
 from langchain_groq import ChatGroq
@@ -39,8 +41,41 @@ groq_client = ChatGroq(
     model_name="llama-3.3-70b-versatile"
 )
 
+# Models
 class ChatRequest(BaseModel):
     text: str
+
+class MoodEntry(BaseModel):
+    mood: str
+    note: Optional[str]
+    timestamp: datetime
+
+class Resource(BaseModel):
+    id: str
+    title: str
+    description: str
+    type: str
+    duration: Optional[int]
+    content: Optional[str]
+
+# Mock database (replace with real database in production)
+mood_entries = []
+resources = [
+    {
+        "id": "1",
+        "title": "Basic Meditation",
+        "description": "A simple meditation exercise for beginners",
+        "type": "meditation",
+        "duration": 10,
+    },
+    {
+        "id": "2",
+        "title": "Deep Breathing",
+        "description": "Learn deep breathing techniques for stress relief",
+        "type": "breathing",
+        "duration": 5,
+    },
+]
 
 @app.get("/test")
 async def test():
@@ -60,6 +95,45 @@ async def chat(request: ChatRequest):
     except Exception as e:
         logger.error(f"Error in chat endpoint: {e}")
         return {"error": str(e)}
+
+@app.post("/mood")
+async def save_mood(entry: MoodEntry):
+    try:
+        mood_entries.append(entry.dict())
+        return {"status": "success", "message": "Mood entry saved"}
+    except Exception as e:
+        logger.error(f"Error saving mood entry: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/mood/history")
+async def get_mood_history():
+    try:
+        return {"entries": mood_entries}
+    except Exception as e:
+        logger.error(f"Error getting mood history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/resources")
+async def get_resources(type: Optional[str] = None):
+    try:
+        if type:
+            filtered_resources = [r for r in resources if r["type"] == type]
+            return {"resources": filtered_resources}
+        return {"resources": resources}
+    except Exception as e:
+        logger.error(f"Error getting resources: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/resources/{resource_id}")
+async def get_resource(resource_id: str):
+    try:
+        resource = next((r for r in resources if r["id"] == resource_id), None)
+        if not resource:
+            raise HTTPException(status_code=404, detail="Resource not found")
+        return resource
+    except Exception as e:
+        logger.error(f"Error getting resource: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
