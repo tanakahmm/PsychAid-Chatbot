@@ -99,8 +99,28 @@ async def chat(request: ChatRequest):
 @app.post("/mood")
 async def save_mood(entry: MoodEntry):
     try:
-        mood_entries.append(entry.dict())
-        return {"status": "success", "message": "Mood entry saved"}
+        # Log the incoming mood entry
+        logger.info(f"Received mood entry: {entry}")
+        
+        # Validate the mood
+        if not entry.mood:
+            raise HTTPException(status_code=400, detail="Mood cannot be empty")
+            
+        # Convert the mood to lowercase for consistency
+        entry_dict = entry.dict()
+        entry_dict['mood'] = entry_dict['mood'].lower()
+        
+        # Add the entry to the mood entries
+        mood_entries.append(entry_dict)
+        
+        # Log the successful save
+        logger.info(f"Successfully saved mood entry: {entry_dict}")
+        
+        return {
+            "status": "success",
+            "message": "Mood entry saved",
+            "data": entry_dict
+        }
     except Exception as e:
         logger.error(f"Error saving mood entry: {e}")
         raise HTTPException(status_code=500, detail=str(e))
