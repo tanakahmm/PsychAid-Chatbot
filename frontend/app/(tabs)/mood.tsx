@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert 
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiService } from '../../services/api';
+import { useRouter } from 'expo-router';
 
 const MOODS = [
   { emoji: '😊', label: 'Happy', color: '#FFD700' },
@@ -14,27 +15,50 @@ const MOODS = [
 ];
 
 export default function MoodScreen() {
+  const router = useRouter();
   const [selectedMood, setSelectedMood] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  const generateMoodMessage = (mood: string, note: string): string => {
+    const baseMessage = `I'm feeling ${mood.toLowerCase()} today`;
+    return note.trim() ? `${baseMessage}. ${note}` : baseMessage;
+  };
 
   const handleSaveMood = async () => {
     if (selectedMood === null) return;
     
     setIsSaving(true);
     try {
+      const mood = MOODS[selectedMood].label;
       const moodData = {
-        mood: MOODS[selectedMood].label,
+        mood,
         note: note.trim(),
         timestamp: new Date(),
       };
       
+      // First save the mood entry
       await ApiService.saveMoodEntry(moodData);
+
+      // Generate the mood message
+      const moodMessage = generateMoodMessage(mood, moodData.note);
       
+      // Send the mood message to chat
+      await ApiService.sendMessage(moodMessage);
+
       // Reset form
       setSelectedMood(null);
       setNote('');
-      Alert.alert('Success', 'Your mood has been saved!');
+
+      // Navigate to chat with the mood message
+      router.push({
+        pathname: '/(tabs)/',
+        params: { 
+          initialMessage: moodMessage,
+          fromMood: 'true'
+        }
+      });
+
     } catch (error) {
       console.error('Error saving mood:', error);
       Alert.alert('Error', 'Failed to save your mood. Please try again.');
@@ -45,7 +69,8 @@ export default function MoodScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>How are you feeling?</Text>
+      <Text style={styles.welcomeTitle}>Welcome to PsychAid</Text>
+      <Text style={styles.title}>How are you feeling today?</Text>
       
       <ScrollView style={styles.content}>
         <View style={styles.moodGrid}>
@@ -103,6 +128,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  welcomeTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 20,
+    marginBottom: 10,
+    color: '#007AFF',
   },
   title: {
     fontSize: 24,

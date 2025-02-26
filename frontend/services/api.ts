@@ -39,10 +39,21 @@ export const ApiService = {
   // Mood tracking endpoints
   saveMoodEntry: async (entry: MoodEntry) => {
     try {
-      const response = await api.post('/mood', entry);
+      console.log('Saving mood entry:', entry); // Debug log
+      const formattedEntry = {
+        ...entry,
+        timestamp: new Date(entry.timestamp).toISOString(),
+      };
+      const response = await api.post('/mood', formattedEntry);
+      console.log('Save mood response:', response.data); // Debug log
       return response.data;
     } catch (error) {
       console.error('Error saving mood entry:', error);
+      // Log more details about the error
+      if (error.response) {
+        console.error('Error response:', error.response.data);
+        console.error('Error status:', error.response.status);
+      }
       throw error;
     }
   },
@@ -76,6 +87,27 @@ export const ApiService = {
       return response.data;
     } catch (error) {
       console.error('Error getting resource:', error);
+      throw error;
+    }
+  },
+
+  // Add new functions for achievement tracking
+  updateMeditationProgress: async (duration: number) => {
+    try {
+      const response = await api.post('/progress/meditation', { duration });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating meditation progress:', error);
+      throw error;
+    }
+  },
+
+  updateMindfulnessProgress: async (duration: number) => {
+    try {
+      const response = await api.post('/progress/mindfulness', { duration });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating mindfulness progress:', error);
       throw error;
     }
   },

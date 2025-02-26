@@ -1,12 +1,18 @@
 import { Stack } from 'expo-router';
-import { ResourceProvider } from '@/contexts/ResourceContext';
+import { useEffect } from 'react';
+import { useRouter } from 'expo-router';
 
 export default function RootLayout() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Redirect to mood page on app start
+    router.replace('/(tabs)/mood');
+  }, []);
+
   return (
-    <ResourceProvider>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      </Stack>
-    </ResourceProvider>
+    <Stack>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    </Stack>
   );
 } 

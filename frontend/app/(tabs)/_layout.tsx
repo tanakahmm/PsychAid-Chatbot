@@ -3,33 +3,26 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function TabLayout() {
   return (
-    <Tabs>
+    <Tabs
+      screenOptions={{
+        tabBarActiveTintColor: '#007AFF',
+        tabBarInactiveTintColor: '#8E8E93',
+      }}
+    >
+      <Tabs.Screen
+        name="mood"
+        options={{
+          title: 'Mood',
+          tabBarIcon: ({ color }) => <Ionicons name="heart" size={24} color={color} />,
+          tabBarLabel: 'Mood',
+        }}
+      />
       <Tabs.Screen
         name="index"
         options={{
           title: 'Chat',
           tabBarIcon: ({ color }) => <Ionicons name="chatbubble" size={24} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="mood"
-        options={{
-          title: 'Mood',
-          tabBarIcon: ({ color }) => <Ionicons name="happy" size={24} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="progress"
-        options={{
-          title: 'Progress',
-          tabBarIcon: ({ color }) => <Ionicons name="trending-up" size={24} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="resource"
-        options={{
-          title: 'Resources',
-          tabBarIcon: ({ color }) => <Ionicons name="book" size={24} color={color} />,
+          tabBarLabel: 'Chat',
         }}
       />
       <Tabs.Screen
@@ -37,6 +30,15 @@ export default function TabLayout() {
         options={{
           title: 'Explore',
           tabBarIcon: ({ color }) => <Ionicons name="compass" size={24} color={color} />,
+          tabBarLabel: 'Explore',
+        }}
+      />
+      <Tabs.Screen
+        name="progress"
+        options={{
+          title: 'Progress',
+          tabBarIcon: ({ color }) => <Ionicons name="stats-chart" size={24} color={color} />,
+          tabBarLabel: 'Progress',
         }}
       />
     </Tabs>

@@ -1,38 +1,172 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
   TextInput,
   TouchableOpacity,
-  ScrollView,
   Text,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   SafeAreaView,
+  FlatList,
+  Keyboard,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
-import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import { ApiService } from '../../services/api';
 import { QuickReplies } from '../../components/QuickReplies';
+import { useLocalSearchParams } from 'expo-router';
 
 interface Message {
   id: string;
-  content: string;
-  isUser: boolean;
+  text: string;
+  sender: 'user' | 'bot';
   timestamp: Date;
 }
 
-const API_URL = 'http://192.168.0.169:8000'; // Change this to your backend URL
-
 export default function ChatScreen() {
+  const { initialMessage, fromMood } = useLocalSearchParams<{ 
+    initialMessage: string;
+    fromMood: string;
+  }>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const scrollViewRef = useRef<ScrollView | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const flatListRef = useRef<FlatList>(null);
+  const inputRef = useRef<TextInput>(null);
+  const initialMessageProcessed = useRef(false);
+
+  useEffect(() => {
+    const keyboardWillShow = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const keyboardWillHide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+
+    setMessages([{
+      id: '1',
+      text: 'Hello! I\'m here to help you with your mental well-being. How are you feeling today?',
+      sender: 'bot',
+      timestamp: new Date(),
+    }]);
+
+    return () => {
+      keyboardWillShow.remove();
+      keyboardWillHide.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (initialMessage && !initialMessageProcessed.current && fromMood === 'true') {
+      initialMessageProcessed.current = true;
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        text: initialMessage,
+        sender: 'user',
+        timestamp: new Date(),
+      };
+      
+      setMessages(prev => [...prev, userMessage]);
+      
+      // Get bot response for the mood
+      const botResponse = getMoodResponse(initialMessage);
+      const botMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: botResponse,
+        sender: 'bot',
+        timestamp: new Date(),
+      };
+      
+      setMessages(prev => [...prev, botMessage]);
+      scrollToBottom();
+    }
+  }, [initialMessage, fromMood]);
+
+  const scrollToBottom = () => {
+    if (flatListRef.current && messages.length > 0) {
+      flatListRef.current.scrollToEnd({ animated: true });
+    }
+  };
+
+  const getMoodResponse = (moodMessage: string): string => {
+    const moodLower = moodMessage.toLowerCase();
+    
+    if (moodLower.includes('sad')) {
+      return "I'm sorry to hear that you're feeling sad. Remember that it's okay to feel this way, and I'm here to support you. Would you like to try a quick meditation session or talk about what's bothering you?";
+    } else if (moodLower.includes('happy')) {
+      return "I'm glad you're feeling happy! It's wonderful to experience positive emotions. Would you like to share what's making you feel this way?";
+    } else if (moodLower.includes('anxious')) {
+      return "I understand that feeling anxious can be overwhelming. Let's try some breathing exercises together to help you feel more grounded. Would you like that?";
+    } else if (moodLower.includes('angry')) {
+      return "I hear that you're feeling angry. It's natural to feel this way sometimes. Would you like to explore some calming techniques or talk about what's causing these feelings?";
+    } else if (moodLower.includes('calm')) {
+      return "It's great that you're feeling calm! This is a good time to practice mindfulness or reflection. Would you like to try a mindfulness exercise to maintain this peaceful state?";
+    } else {
+      return "Thank you for sharing how you're feeling. Would you like to talk more about it or try some activities to help support your emotional well-being?";
+    }
+  };
+
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim()) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      text: text.trim(),
+      sender: 'user',
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInputText('');
+    setIsLoading(true);
+
+    try {
+      const isMoodMessage = text.toLowerCase().includes("i'm feeling") || 
+                          text.toLowerCase().includes("i am feeling");
+      
+      let responseText: string;
+      
+      if (isMoodMessage) {
+        responseText = getMoodResponse(text);
+      } else {
+        try {
+          const response = await ApiService.sendMessage(text);
+          responseText = response.response || "I'm here to help. Could you please tell me more?";
+        } catch (error) {
+          console.error('API Error:', error);
+          responseText = "I'm here to help. Could you please tell me more?";
+        }
+      }
+
+      const botMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: responseText,
+        sender: 'bot',
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, botMessage]);
+      scrollToBottom();
+    } catch (error) {
+      console.error('Error in message handling:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: 'I understand what you\'re saying. How can I help you further?',
+        sender: 'bot',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const stopSpeaking = async () => {
     try {
@@ -45,10 +179,7 @@ export default function ChatScreen() {
 
   const speakMessage = async (text: string) => {
     try {
-      // Stop any ongoing speech
       await stopSpeaking();
-
-      // Start new speech
       setIsSpeaking(true);
       await Speech.speak(text, {
         language: 'en',
@@ -66,82 +197,44 @@ export default function ChatScreen() {
     }
   };
 
-  const handleSendMessage = async (text: string) => {
-    if (!text.trim() || isLoading) return;
-
-    try {
-      setIsLoading(true);
-      // Add user message
-      const userMessage: Message = {
-        id: Date.now().toString(),
-        content: text.trim(),
-        isUser: true,
-        timestamp: new Date()
-      };
-      
-      setMessages(prev => [...prev, userMessage]);
-      setInputText('');
-
-      // Make API call to backend
-      const response = await fetch(`${API_URL}/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          text: text.trim(),
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to get response from server');
-      }
-
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(data.error);
-      }
-      
-      // Add bot message from backend response
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: data.response || "Sorry, I couldn't process that request.",
-        isUser: false,
-        timestamp: new Date()
-      };
-
-      setMessages(prev => [...prev, botMessage]);
-
-      // Speak the bot's response
-      if (data.response) {
-        speakMessage(data.response);
-      }
-
-    } catch (error: any) {
-      console.error('Error:', error);
-      Alert.alert('Error', error?.message || 'Failed to get response from the chatbot');
-      
-      // Add error message to chat
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: "I'm having trouble connecting to the server. Please try again later.",
-        isUser: false,
-        timestamp: new Date()
-      };
-      
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const renderMessage = ({ item }: { item: Message }) => (
+    <View style={[
+      styles.messageContainer,
+      item.sender === 'user' ? styles.userMessageContainer : styles.botMessageContainer
+    ]}>
+      <View style={[
+        styles.messageBubble,
+        item.sender === 'user' ? styles.userBubble : styles.botBubble
+      ]}>
+        <Text style={[
+          styles.messageText,
+          item.sender === 'user' ? styles.userMessageText : styles.botMessageText
+        ]}>
+          {item.text}
+        </Text>
+        {item.sender === 'bot' && (
+          <TouchableOpacity
+            style={styles.speakButton}
+            onPress={() => speakMessage(item.text)}
+          >
+            <Ionicons 
+              name={isSpeaking ? "volume-high" : "volume-medium"} 
+              size={20} 
+              color={isSpeaking ? "#007AFF" : "#8E8E93"} 
+            />
+          </TouchableOpacity>
+        )}
+      </View>
+      <Text style={styles.timestamp}>
+        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      </Text>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.container}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
@@ -157,43 +250,25 @@ export default function ChatScreen() {
           )}
         </View>
 
-        <ScrollView
-          ref={scrollViewRef}
-          style={styles.messagesContainer}
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd()}
-        >
-          {messages.map((message) => (
-            <View 
-              key={message.id}
-              style={[
-                styles.messageBubble,
-                message.isUser ? styles.userMessage : styles.botMessage
-              ]}
-            >
-              <Text style={[
-                styles.messageText,
-                !message.isUser && styles.botMessageText
-              ]}>
-                {message.content}
-              </Text>
-              {!message.isUser && (
-                <TouchableOpacity
-                  style={styles.speakButton}
-                  onPress={() => speakMessage(message.content)}
-                >
-                  <Ionicons 
-                    name={isSpeaking ? "volume-high" : "volume-medium"} 
-                    size={20} 
-                    color="#007AFF" 
-                  />
-                </TouchableOpacity>
-              )}
-            </View>
-          ))}
-          {isLoading && (
-            <ActivityIndicator style={styles.loading} color="#007AFF" />
-          )}
-        </ScrollView>
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.messagesList}
+          onContentSizeChange={scrollToBottom}
+          onLayout={scrollToBottom}
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0,
+            autoscrollToTopThreshold: 10,
+          }}
+        />
+
+        {isLoading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#007AFF" />
+          </View>
+        )}
 
         <QuickReplies
           suggestions={[
@@ -208,17 +283,25 @@ export default function ChatScreen() {
 
         <View style={styles.inputContainer}>
           <TextInput
+            ref={inputRef}
             style={styles.input}
             value={inputText}
             onChangeText={setInputText}
             placeholder="Type a message..."
             multiline
+            maxHeight={100}
+            onSubmitEditing={() => handleSendMessage(inputText)}
           />
           <TouchableOpacity
             style={styles.sendButton}
             onPress={() => handleSendMessage(inputText)}
+            disabled={!inputText.trim()}
           >
-            <Ionicons name="send" size={24} color="#007AFF" />
+            <Ionicons 
+              name="send" 
+              size={24} 
+              color={inputText.trim() ? "#007AFF" : "#C7C7CC"} 
+            />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -246,44 +329,63 @@ const styles = StyleSheet.create({
   stopButton: {
     padding: 8,
   },
-  messagesContainer: {
-    flex: 1,
-    padding: 16,
+  messagesList: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
-  messageBubble: {
+  messageContainer: {
+    marginVertical: 4,
     maxWidth: '80%',
-    padding: 12,
-    borderRadius: 16,
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
   },
-  userMessage: {
-    backgroundColor: '#007AFF',
+  userMessageContainer: {
     alignSelf: 'flex-end',
   },
-  botMessage: {
-    backgroundColor: '#E9E9EB',
+  botMessageContainer: {
     alignSelf: 'flex-start',
+  },
+  messageBubble: {
+    padding: 12,
+    borderRadius: 20,
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  userBubble: {
+    backgroundColor: '#007AFF',
+    borderBottomRightRadius: 4,
+  },
+  botBubble: {
+    backgroundColor: '#F2F2F7',
+    borderBottomLeftRadius: 4,
   },
   messageText: {
     fontSize: 16,
-    color: '#fff',
-    flex: 1,
+    lineHeight: 20,
+  },
+  userMessageText: {
+    color: '#FFFFFF',
   },
   botMessageText: {
-    color: '#000',
+    color: '#000000',
   },
-  speakButton: {
-    marginLeft: 8,
-    padding: 4,
+  timestamp: {
+    fontSize: 12,
+    color: '#8E8E93',
+    marginTop: 4,
+    marginHorizontal: 4,
+  },
+  loadingContainer: {
+    padding: 8,
+    alignItems: 'center',
   },
   inputContainer: {
     flexDirection: 'row',
-    padding: 16,
-    alignItems: 'center',
+    alignItems: 'flex-end',
+    padding: 8,
     borderTopWidth: 1,
     borderTopColor: '#E9E9EB',
+    backgroundColor: '#FFFFFF',
   },
   input: {
     flex: 1,
@@ -291,13 +393,20 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 8,
+    paddingRight: 40,
     marginRight: 8,
     fontSize: 16,
+    maxHeight: 100,
   },
   sendButton: {
     padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  loading: {
-    marginVertical: 8,
+  speakButton: {
+    position: 'absolute',
+    right: -30,
+    bottom: 0,
+    padding: 6,
   },
 });
