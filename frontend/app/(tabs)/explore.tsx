@@ -24,18 +24,40 @@ import * as Haptics from 'expo-haptics';
 import { ApiService, Resource } from '../../services/api';
 import { MeditationTimer } from '../../components/MeditationTimer';
 
-interface Category {
-  id: string;
-  title: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  count: number;
-  description: string;
-}
-
 interface DailyTip {
   id: string;
   tip: string;
   date: string;
+}
+
+type IconName = keyof typeof Ionicons.glyphMap;
+
+interface QuickAction {
+  id: string;
+  title: string;
+  icon: IconName;
+  color: string;
+  duration?: number;
+  type: string;
+}
+
+interface Category {
+  id: string;
+  title: string;
+  icon: IconName;
+  description: string;
+  color: string;
+  route: string;
+}
+
+interface Practice {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  duration: number;
+  level: 'beginner' | 'intermediate' | 'advanced';
+  benefits: string[];
 }
 
 interface TimerModalProps {
@@ -146,6 +168,140 @@ const TimerModal: React.FC<TimerModalProps> = ({ visible, onClose, duration, typ
   );
 };
 
+const QUICK_ACTIONS: QuickAction[] = [
+  {
+    id: 'quick-breathe',
+    title: 'Quick Breathe',
+    icon: 'water-outline',
+    color: '#2196F3',
+    duration: 60,
+    type: 'breathing'
+  },
+  {
+    id: 'quick-meditate',
+    title: 'Quick Meditate',
+    icon: 'sunny-outline',
+    color: '#4CAF50',
+    duration: 180,
+    type: 'meditation'
+  },
+  {
+    id: 'mood-check',
+    title: 'Mood Check',
+    icon: 'heart-outline',
+    color: '#E91E63',
+    type: 'mood'
+  },
+  {
+    id: 'daily-exercise',
+    title: 'Daily Exercise',
+    icon: 'fitness-outline',
+    color: '#FF9800',
+    duration: 300,
+    type: 'exercise'
+  },
+];
+
+const PRACTICES: Practice[] = [
+  {
+    id: 'med-1',
+    title: 'Mindful Breathing',
+    description: 'Focus on your breath to reduce stress and anxiety',
+    type: 'meditation',
+    duration: 300,
+    level: 'beginner',
+    benefits: ['Reduces stress', 'Improves focus', 'Calms mind']
+  },
+  {
+    id: 'med-2',
+    title: 'Body Scan',
+    description: 'Progressive relaxation for better sleep',
+    type: 'meditation',
+    duration: 600,
+    level: 'intermediate',
+    benefits: ['Better sleep', 'Reduces tension', 'Deep relaxation']
+  },
+  {
+    id: 'breath-1',
+    title: '4-7-8 Breathing',
+    description: 'Calming breathing pattern for quick relaxation',
+    type: 'breathing',
+    duration: 180,
+    level: 'beginner',
+    benefits: ['Quick calm', 'Stress relief', 'Better focus']
+  },
+  {
+    id: 'ex-1',
+    title: 'Morning Energizer',
+    description: 'Quick exercises to start your day',
+    type: 'exercise',
+    duration: 300,
+    level: 'beginner',
+    benefits: ['Boosts energy', 'Improves mood', 'Increases focus']
+  },
+];
+
+const CATEGORIES: Category[] = [
+  {
+    id: 'meditation',
+    title: 'Meditation',
+    icon: 'leaf',
+    description: 'Find peace and clarity through guided meditation sessions',
+    color: '#4CAF50',
+    route: '/meditation',
+  },
+  {
+    id: 'anxiety',
+    title: 'Anxiety Management',
+    icon: 'heart',
+    description: 'Learn techniques to manage anxiety and reduce its impact',
+    color: '#2196F3',
+    route: '/anxiety',
+  },
+  {
+    id: 'sleep',
+    title: 'Sleep Hygiene',
+    icon: 'moon',
+    description: 'Improve your sleep quality and overall well-being',
+    color: '#673AB7',
+    route: '/sleep',
+  },
+  {
+    id: 'stress',
+    title: 'Stress Relief',
+    icon: 'water',
+    description: 'Find ways to manage and reduce stress in your life',
+    color: '#FF9800',
+    route: '/stress',
+  },
+  {
+    id: 'selfcare',
+    title: 'Self-Care Tips',
+    icon: 'happy',
+    description: 'Practical tips for taking care of yourself',
+    color: '#E91E63',
+    route: '/selfcare',
+  },
+];
+
+const getPracticeColor = (type: string): string => {
+  const colors: { [key: string]: string } = {
+    meditation: '#4CAF50',
+    breathing: '#2196F3',
+    exercise: '#FF9800',
+  };
+  return colors[type] || '#9C27B0';
+};
+
+const getLevelColor = (level: string): string => {
+  const colors: { [key: string]: string } = {
+    beginner: '#4CAF50',
+    intermediate: '#FF9800',
+    advanced: '#F44336',
+  };
+  return colors[level] || '#9C27B0';
+};
+
 export default function ExploreScreen() {
   const router = useRouter();
   const [featuredContent, setFeaturedContent] = useState<Resource[]>([]);
@@ -159,12 +315,10 @@ export default function ExploreScreen() {
   const [likedContent, setLikedContent] = useState<Set<string>>(new Set());
   const [showTimer, setShowTimer] = useState(false);
   const [timerDuration, setTimerDuration] = useState(0);
-  const [selectedType, setSelectedType] = useState('');
+  const [timerType, setTimerType] = useState('');
   const [showMindfulnessTimer, setShowMindfulnessTimer] = useState(false);
   const [mindfulnessCompleted, setMindfulnessCompleted] = useState(false);
   const fadeAnim = new Animated.Value(0);
-  const [sortBy, setSortBy] = useState<'recent' | 'popular' | 'duration'>('recent');
-  const [showFeatured, setShowFeatured] = useState(true);
   const scrollY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -290,37 +444,42 @@ export default function ExploreScreen() {
           {
             id: 'meditation',
             title: 'Meditation',
-            icon: 'leaf-outline',
-            count: categoryMap['meditation'] || 0,
+            icon: 'leaf',
             description: 'Find peace and clarity through guided meditation sessions',
+            color: '#4CAF50',
+            route: '/meditation',
           },
           {
-            id: 'breathing',
-            title: 'Breathing',
-            icon: 'fitness-outline',
-            count: categoryMap['breathing'] || 0,
-            description: 'Learn breathing techniques to reduce stress and anxiety',
+            id: 'anxiety',
+            title: 'Anxiety Management',
+            icon: 'heart',
+            description: 'Learn techniques to manage anxiety and reduce its impact',
+            color: '#2196F3',
+            route: '/anxiety',
           },
           {
-            id: 'articles',
-            title: 'Articles',
-            icon: 'book-outline',
-            count: categoryMap['articles'] || 0,
-            description: 'Read expert insights on mental health and well-being',
+            id: 'sleep',
+            title: 'Sleep Hygiene',
+            icon: 'moon',
+            description: 'Improve your sleep quality and overall well-being',
+            color: '#673AB7',
+            route: '/sleep',
           },
           {
-            id: 'exercises',
-            title: 'Exercises',
-            icon: 'body-outline',
-            count: categoryMap['exercises'] || 0,
-            description: 'Physical exercises to boost your mood and energy',
+            id: 'stress',
+            title: 'Stress Relief',
+            icon: 'water',
+            description: 'Find ways to manage and reduce stress in your life',
+            color: '#FF9800',
+            route: '/stress',
           },
           {
-            id: 'journal',
-            title: 'Journal',
-            icon: 'journal-outline',
-            count: categoryMap['journal'] || 0,
-            description: 'Guided journaling prompts for self-reflection',
+            id: 'selfcare',
+            title: 'Self-Care Tips',
+            icon: 'happy',
+            description: 'Practical tips for taking care of yourself',
+            color: '#E91E63',
+            route: '/selfcare',
           },
         ]);
 
@@ -355,43 +514,15 @@ export default function ExploreScreen() {
     fetchData();
   }, []);
 
-  const sortContent = (content: Resource[]) => {
-    switch (sortBy) {
-      case 'recent':
-        return [...content].sort((a, b) => b.id.localeCompare(a.id));
-      case 'popular':
-        return [...content].sort((a, b) => (likedContent.has(b.id) ? 1 : -1) - (likedContent.has(a.id) ? 1 : -1));
-      case 'duration':
-        return [...content].sort((a, b) => (b.duration || 0) - (a.duration || 0));
-      default:
-        return content;
-    }
-  };
-
-  const filteredContent = sortContent([...featuredContent, ...recommendations].filter(item => {
+  const filteredContent = [...recommendations].filter(item => {
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          item.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = !selectedCategory || item.type === selectedCategory;
     return matchesSearch && matchesCategory;
-  }));
+  });
 
-  const handleCategoryPress = async (category: Category) => {
-    await HAPTIC_OPTIONS.medium();
-    setSelectedCategory(selectedCategory === category.id ? null : category.id);
-    
-    if (category.id === 'meditation') {
-      setTimerDuration(600);
-      setSelectedType('Meditation');
-      setShowTimer(true);
-    } else if (category.id === 'breathing') {
-      setTimerDuration(300);
-      setSelectedType('Breathing');
-      setShowTimer(true);
-    } else if (category.id === 'exercises') {
-      setTimerDuration(900);
-      setSelectedType('Exercise');
-      setShowTimer(true);
-    }
+  const handleCategoryPress = (route: string) => {
+    router.push(route);
   };
 
   const handleLikeContent = async (contentId: string) => {
@@ -407,23 +538,23 @@ export default function ExploreScreen() {
     });
   };
 
-  const getIconForType = (type: string): keyof typeof Ionicons.glyphMap => {
-    const iconMap: { [key: string]: keyof typeof Ionicons.glyphMap } = {
-      'meditation': 'leaf-outline',
-      'breathing': 'fitness-outline',
-      'articles': 'book-outline',
-      'exercises': 'body-outline',
-      'journal': 'journal-outline'
+  const getIconForType = (type: string): IconName => {
+    const iconMap: { [key: string]: IconName } = {
+      'meditation': 'leaf',
+      'anxiety': 'heart',
+      'sleep': 'moon',
+      'stress': 'water',
+      'selfcare': 'happy',
     };
-    return iconMap[type] || 'document-outline';
+    return iconMap[type] || 'help-circle';
   };
 
   const handleTimerComplete = async () => {
     try {
-      if (selectedType === 'Meditation') {
+      if (timerType === 'Meditation') {
         await ApiService.updateMeditationProgress(timerDuration / 60);
       }
-      Alert.alert('Success', `${selectedType} session completed!`);
+      Alert.alert('Success', `${timerType} session completed!`);
       setShowTimer(false);
     } catch (error) {
       console.error('Error updating progress:', error);
@@ -443,65 +574,79 @@ export default function ExploreScreen() {
     }
   };
 
-  const renderFeaturedSection = () => {
-    if (!showFeatured) return null;
+  const handleQuickAction = (action: QuickAction) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
-    return (
-      <Animated.View 
-        style={[
-          styles.featuredSection,
-          {
-            transform: [{
-              translateY: scrollY.interpolate({
-                inputRange: [0, 100],
-                outputRange: [0, -50],
-                extrapolate: 'clamp',
-              }),
-            }],
-          },
-        ]}
-      >
-        <LinearGradient
-          colors={['#007AFF', '#00C6FF']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.featuredGradient}
-        >
-          <Text style={styles.featuredTitle}>Featured</Text>
-          <FlatList
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            data={featuredContent}
-            keyExtractor={(item) => `featured-${item.id}`}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.featuredCard}
-                onPress={() => {
-                  if (item.type === 'meditation' || item.type === 'breathing' || item.type === 'exercises') {
-                    setTimerDuration(item.duration || 300);
-                    setSelectedType(item.type.charAt(0).toUpperCase() + item.type.slice(1));
-                    setShowTimer(true);
-                  }
-                }}
-              >
-                <View style={styles.featuredIconContainer}>
-                  <Ionicons 
-                    name={getIconForType(item.type)} 
-                    size={32} 
-                    color="#fff" 
-                  />
-                </View>
-                <Text style={styles.featuredCardTitle}>{item.title}</Text>
-                <Text style={styles.featuredCardDescription} numberOfLines={2}>
-                  {item.description}
-                </Text>
-              </TouchableOpacity>
-            )}
-          />
-        </LinearGradient>
-      </Animated.View>
-    );
+    if (action.type === 'mood') {
+      router.push('/(tabs)/mood');
+      return;
+    }
+
+    if (action.duration) {
+      setTimerDuration(action.duration);
+      setTimerType(action.title);
+      setShowTimer(true);
+    }
   };
+
+  const handlePracticePress = (practice: Practice) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setTimerDuration(practice.duration);
+    setTimerType(practice.title);
+    setShowTimer(true);
+  };
+
+  const renderQuickAction = ({ item }: { item: QuickAction }) => (
+    <TouchableOpacity
+      style={[styles.quickActionCard, { backgroundColor: item.color + '15' }]}
+      onPress={() => handleQuickAction(item)}
+    >
+      <View style={[styles.quickActionIcon, { backgroundColor: item.color + '20' }]}>
+        <Ionicons name={item.icon} size={24} color={item.color} />
+      </View>
+      <Text style={styles.quickActionTitle}>{item.title}</Text>
+      {item.duration && (
+        <Text style={[styles.quickActionDuration, { color: item.color }]}>
+          {Math.floor(item.duration / 60)} min
+        </Text>
+      )}
+    </TouchableOpacity>
+  );
+
+  const renderPractice = ({ item }: { item: Practice }) => (
+    <TouchableOpacity
+      style={styles.practiceCard}
+      onPress={() => handlePracticePress(item)}
+    >
+      <View style={styles.practiceHeader}>
+        <View style={[styles.practiceType, { backgroundColor: getPracticeColor(item.type) + '15' }]}>
+          <Text style={[styles.practiceTypeText, { color: getPracticeColor(item.type) }]}>
+            {item.type}
+          </Text>
+        </View>
+        <View style={[styles.practiceLevel, { backgroundColor: getLevelColor(item.level) + '15' }]}>
+          <Text style={[styles.practiceLevelText, { color: getLevelColor(item.level) }]}>
+            {item.level}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.practiceTitle}>{item.title}</Text>
+      <Text style={styles.practiceDescription}>{item.description}</Text>
+      <View style={styles.practiceBenefits}>
+        {item.benefits.map((benefit, index) => (
+          <View key={index} style={styles.benefitTag}>
+            <Text style={styles.benefitText}>{benefit}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={styles.practiceFooter}>
+        <Ionicons name="time-outline" size={16} color="#666" />
+        <Text style={styles.practiceDuration}>
+          {Math.floor(item.duration / 60)} min
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
 
   const renderContentItem = ({ item }: { item: Resource }) => (
     <Animated.View 
@@ -524,7 +669,7 @@ export default function ExploreScreen() {
           await HAPTIC_OPTIONS.light();
           if (item.type === 'meditation' || item.type === 'breathing' || item.type === 'exercises') {
             setTimerDuration(item.duration || 300);
-            setSelectedType(item.type.charAt(0).toUpperCase() + item.type.slice(1));
+            setTimerType(item.type.charAt(0).toUpperCase() + item.type.slice(1));
             setShowTimer(true);
           } else if (item.type === 'mindfulness') {
             setShowMindfulnessTimer(true);
@@ -602,7 +747,7 @@ export default function ExploreScreen() {
         visible={showTimer} 
         onClose={() => setShowTimer(false)}
         duration={timerDuration}
-        type={selectedType}
+        type={timerType}
       />
       
       <Modal
@@ -618,128 +763,28 @@ export default function ExploreScreen() {
         </View>
       </Modal>
 
-      <Animated.View 
-        style={[
-          styles.header,
-          {
-            opacity: scrollY.interpolate({
-              inputRange: [0, 100],
-              outputRange: [1, 0.8],
-            }),
-          },
-        ]}
-      >
+      <View style={styles.header}>
         <Text style={styles.title}>Explore</Text>
-        <View style={styles.searchContainer}>
-          <Ionicons name="search-outline" size={20} color="#666" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search content..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-        <View style={styles.filterContainer}>
-          <TouchableOpacity
-            style={[styles.filterButton, sortBy === 'recent' && styles.filterButtonActive]}
-            onPress={() => setSortBy('recent')}
-          >
-            <Text style={[styles.filterText, sortBy === 'recent' && styles.filterTextActive]}>
-              Recent
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterButton, sortBy === 'popular' && styles.filterButtonActive]}
-            onPress={() => setSortBy('popular')}
-          >
-            <Text style={[styles.filterText, sortBy === 'popular' && styles.filterTextActive]}>
-              Popular
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterButton, sortBy === 'duration' && styles.filterButtonActive]}
-            onPress={() => setSortBy('duration')}
-          >
-            <Text style={[styles.filterText, sortBy === 'duration' && styles.filterTextActive]}>
-              Duration
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
+        <Text style={styles.subtitle}>Choose a category to begin your wellness journey</Text>
+      </View>
 
-      <Animated.ScrollView 
-        style={styles.content}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
-        scrollEventThrottle={16}
-      >
-        {renderFeaturedSection()}
-        
-        {/* Daily Tip */}
-        {dailyTip && (
-          <Animated.View style={[styles.section, { opacity: fadeAnim }]}>
-            <Text style={styles.sectionTitle}>Daily Tip</Text>
-            <View style={styles.tipCard}>
-              <Text style={styles.tipText}>{dailyTip.tip}</Text>
-              <Text style={styles.tipDate}>{dailyTip.date}</Text>
-            </View>
-          </Animated.View>
-        )}
-
-        {/* Categories */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Categories</Text>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesContainer}
-          >
-            {categories.map((category) => (
-              <TouchableOpacity
-                key={`category-${category.id}`}
-                style={[
-                  styles.categoryCard,
-                  selectedCategory === category.id && styles.categoryCardSelected
-                ]}
-                onPress={() => handleCategoryPress(category)}
-              >
-                <View style={styles.categoryIcon}>
-                  <Ionicons 
-                    name={category.icon} 
-                    size={24} 
-                    color={selectedCategory === category.id ? '#fff' : '#007AFF'} 
-                  />
-                </View>
-                <Text style={styles.categoryTitle}>{category.title}</Text>
-                <Text style={styles.categoryDescription} numberOfLines={2}>
-                  {category.description}
-                </Text>
-                <Text style={styles.categoryCount}>{category.count} items</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+      <ScrollView style={styles.content}>
+        <View style={styles.categoriesGrid}>
+          {CATEGORIES.map((category) => (
+            <TouchableOpacity
+              key={category.id}
+              style={[styles.categoryCard, { borderColor: category.color }]}
+              onPress={() => handleCategoryPress(category.route)}
+            >
+              <View style={[styles.iconContainer, { backgroundColor: category.color + '20' }]}>
+                <Ionicons name={category.icon} size={32} color={category.color} />
+              </View>
+              <Text style={styles.categoryTitle}>{category.title}</Text>
+              <Ionicons name="chevron-forward" size={20} color={category.color} />
+            </TouchableOpacity>
+          ))}
         </View>
-
-        {/* Content Grid */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            {selectedCategory ? `${selectedCategory.charAt(0).toUpperCase() + selectedCategory.slice(1)} Content` : 'Featured Content'}
-          </Text>
-          <FlatList
-            data={filteredContent}
-            renderItem={renderContentItem}
-            keyExtractor={(item) => `${item.type}-${item.id}`}
-            contentContainerStyle={styles.contentGrid}
-            showsVerticalScrollIndicator={false}
-            initialNumToRender={4}
-            maxToRenderPerBatch={4}
-            windowSize={5}
-            removeClippedSubviews={true}
-          />
-        </View>
-      </Animated.ScrollView>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -754,143 +799,53 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
   },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    marginTop: 12,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    fontSize: 16,
-  },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    textAlign: 'center',
+    color: '#1a1a1a',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 8,
   },
   content: {
     flex: 1,
   },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 16,
-    paddingHorizontal: 16,
-  },
-  tipCard: {
-    backgroundColor: '#F0F7FF',
-    borderRadius: 12,
+  categoriesGrid: {
     padding: 16,
-    marginHorizontal: 16,
-  },
-  tipText: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: '#333',
-  },
-  tipDate: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 8,
-  },
-  categoriesContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 8,
   },
   categoryCard: {
-    width: 200,
-    backgroundColor: '#F8F8F8',
-    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 16,
-    marginRight: 12,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  categoryCardSelected: {
-    backgroundColor: '#007AFF',
-  },
-  categoryIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#E3F2FF',
+  iconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginRight: 16,
   },
   categoryTitle: {
+    flex: 1,
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: 8,
-    color: '#333',
-  },
-  categoryDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  categoryCount: {
-    fontSize: 12,
-    color: '#007AFF',
-  },
-  contentGrid: {
-    paddingHorizontal: 16,
-  },
-  contentCard: {
-    marginBottom: 16,
-    borderRadius: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  contentImageContainer: {
-    height: 140,
-    backgroundColor: '#E3F2FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  contentInfo: {
-    padding: 16,
-  },
-  contentTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  contentDescription: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  contentFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  contentType: {
-    fontSize: 12,
-    color: '#007AFF',
-    textTransform: 'uppercase',
-  },
-  likeButton: {
-    padding: 4,
+    color: '#1a1a1a',
   },
   modalOverlay: {
     flex: 1,
@@ -981,69 +936,6 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontWeight: '500',
   },
-  featuredSection: {
-    marginBottom: 24,
-    overflow: 'hidden',
-  },
-  featuredGradient: {
-    padding: 16,
-    borderRadius: 16,
-    margin: 16,
-  },
-  featuredTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 16,
-  },
-  featuredCard: {
-    width: 200,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    padding: 16,
-    marginRight: 12,
-  },
-  featuredIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  featuredCardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 8,
-  },
-  featuredCardDescription: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    lineHeight: 20,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingTop: 12,
-  },
-  filterButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: '#F5F5F5',
-  },
-  filterButtonActive: {
-    backgroundColor: '#007AFF',
-  },
-  filterText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  filterTextActive: {
-    color: '#fff',
-  },
   progressContainer: {
     width: '100%',
     height: 4,
@@ -1063,6 +955,148 @@ const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quickActionCard: {
+    width: 120,
+    padding: 16,
+    borderRadius: 16,
+    marginRight: 12,
+    alignItems: 'center',
+  },
+  quickActionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  quickActionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 4,
+    color: '#1a1a1a',
+  },
+  quickActionDuration: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  practiceCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  practiceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  practiceType: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  practiceTypeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  practiceLevel: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  practiceLevelText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  practiceTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#1a1a1a',
+  },
+  practiceDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  practiceBenefits: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  benefitTag: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  benefitText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  practiceFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  practiceDuration: {
+    fontSize: 14,
+    color: '#666',
+  },
+  contentCard: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  contentImageContainer: {
+    width: '100%',
+    height: 160,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  contentInfo: {
+    padding: 16,
+  },
+  contentTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 8,
+  },
+  contentDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 12,
+  },
+  contentFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  likeButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#F0F0F0',
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  TouchableOpacity,
+  Dimensions,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getAllStats, getCategoryStats, Achievement } from '../../utils/achievements';
 import { Ionicons } from '@expo/vector-icons';
 import { ApiService, MoodEntry } from '../../services/api';
 
@@ -11,16 +20,19 @@ interface ProgressStats {
   streakDays: number;
   lastWeekMoods: { [key: string]: number };
   moodDistribution: { [key: string]: number };
-  achievements: Achievement[];
 }
 
-interface Achievement {
-  id: string;
-  title: string;
-  description: string;
-  icon: string;
-  achieved: boolean;
-  progress: number;
+interface Stats {
+  totalSessions: number;
+  totalMinutes: number;
+  categoriesUsed: number;
+  lastSession: string | null;
+}
+
+interface CategoryStats {
+  totalSessions: number;
+  totalMinutes: number;
+  lastSession: string | null;
 }
 
 export default function ProgressScreen() {
@@ -33,8 +45,27 @@ export default function ProgressScreen() {
     streakDays: 0,
     lastWeekMoods: {},
     moodDistribution: {},
-    achievements: [],
   });
+
+  // New states for achievements
+  const [overallStats, setOverallStats] = useState<Stats | null>(null);
+  const [categoryStats, setCategoryStats] = useState<Record<string, CategoryStats>>({});
+  const [loadingAchievements, setLoadingAchievements] = useState(true);
+
+  useEffect(() => {
+    loadAllData();
+  }, []);
+
+  const loadAllData = async () => {
+    setIsLoading(true);
+    setLoadingAchievements(true);
+    await Promise.all([
+      fetchMoodHistory(),
+      loadAchievementStats()
+    ]);
+    setIsLoading(false);
+    setLoadingAchievements(false);
+  };
 
   const calculateStats = (entries: MoodEntry[]) => {
     const now = new Date();
@@ -62,36 +93,8 @@ export default function ProgressScreen() {
       return acc;
     }, {});
 
-    // Calculate mood streak for achievement
+    // Calculate mood streak
     const moodStreak = calculateStreak(entries);
-    
-    // Calculate achievements
-    const achievements: Achievement[] = [
-      {
-        id: '1',
-        title: 'Mood Tracker',
-        description: 'Track your mood for 7 days in a row',
-        icon: 'calendar',
-        achieved: moodStreak >= 7,
-        progress: Math.min(moodStreak / 7, 1) * 100,
-      },
-      {
-        id: '2',
-        title: 'Meditation Master',
-        description: 'Complete 10 meditation sessions',
-        icon: 'leaf',
-        achieved: stats.totalMeditations >= 10,
-        progress: Math.min(stats.totalMeditations / 10, 1) * 100,
-      },
-      {
-        id: '3',
-        title: 'Mindfulness Journey',
-        description: 'Meditate for a total of 60 minutes',
-        icon: 'timer',
-        achieved: stats.totalMeditationMinutes >= 60,
-        progress: Math.min(stats.totalMeditationMinutes / 60, 1) * 100,
-      },
-    ];
 
     // Calculate weekly mood average
     const weeklyMoodAverage = lastWeekEntries.length > 0
@@ -117,7 +120,6 @@ export default function ProgressScreen() {
       streakDays: moodStreak,
       lastWeekMoods,
       moodDistribution,
-      achievements,
     });
   };
 
@@ -155,31 +157,74 @@ export default function ProgressScreen() {
       calculateStats(entries);
     } catch (error) {
       console.error('Error fetching mood history:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchMoodHistory();
-  }, []);
+  const loadAchievementStats = async () => {
+    try {
+      const stats = await getAllStats();
+      setOverallStats(stats);
 
-  if (isLoading) {
+      const categories = ['meditation', 'anxiety', 'sleep', 'stress', 'selfcare'];
+      const catStats: Record<string, CategoryStats> = {};
+      
+      for (const category of categories) {
+        catStats[category] = await getCategoryStats(category as Achievement['category']);
+      }
+      
+      setCategoryStats(catStats);
+    } catch (error) {
+      console.error('Error loading achievement stats:', error);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Never';
+    return new Date(dateString).toLocaleDateString();
+  };
+
+  const getCategoryIcon = (category: string) => {
+    switch (category) {
+      case 'meditation': return 'leaf';
+      case 'anxiety': return 'heart';
+      case 'sleep': return 'moon';
+      case 'stress': return 'water';
+      case 'selfcare': return 'happy';
+      default: return 'star';
+    }
+  };
+
+  const getMoodColor = (mood: string): string => {
+    const colors: { [key: string]: string } = {
+      'Happy': '#4CAF50',
+      'Calm': '#2196F3',
+      'Neutral': '#9E9E9E',
+      'Sad': '#FFC107',
+      'Anxious': '#FF9800',
+      'Angry': '#F44336',
+    };
+    return colors[mood] || '#9E9E9E';
+  };
+
+  const getMoodColorByValue = (value: number): string => {
+    const colors = ['#F44336', '#FF9800', '#FFC107', '#2196F3', '#4CAF50'];
+    return colors[Math.floor(value) - 1] || colors[2];
+  };
+
+  if (isLoading || loadingAchievements) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.loadingText}>Loading your progress...</Text>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4CAF50" />
+      </View>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Your Progress</Text>
-      
       <ScrollView style={styles.content}>
-        {/* Weekly Summary */}
+        {/* Mood Tracking Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Weekly Summary</Text>
+          <Text style={styles.sectionTitle}>Mood Tracking</Text>
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
               <Text style={styles.statValue}>{stats.weeklyMoodAverage.toFixed(1)}</Text>
@@ -216,27 +261,6 @@ export default function ProgressScreen() {
           </View>
         </View>
 
-        {/* Achievements */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Achievements</Text>
-          <View style={styles.achievementsContainer}>
-            {stats.achievements.map((achievement) => (
-              <View key={achievement.id} style={styles.achievementCard}>
-                <View style={[styles.achievementIcon, achievement.achieved && styles.achievementIconCompleted]}>
-                  <Ionicons name={achievement.icon as any} size={24} color={achievement.achieved ? '#fff' : '#007AFF'} />
-                </View>
-                <View style={styles.achievementInfo}>
-                  <Text style={styles.achievementTitle}>{achievement.title}</Text>
-                  <Text style={styles.achievementDescription}>{achievement.description}</Text>
-                  <View style={styles.progressBar}>
-                    <View style={[styles.progressFill, { width: `${achievement.progress}%` }]} />
-                  </View>
-                </View>
-              </View>
-            ))}
-          </View>
-        </View>
-
         {/* Weekly Mood Chart */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Weekly Mood</Text>
@@ -257,62 +281,94 @@ export default function ProgressScreen() {
             ))}
           </View>
         </View>
+
+        {/* Achievements Section */}
+        <View style={[styles.section, styles.achievementsSection]}>
+          <Text style={styles.sectionTitle}>Activity Achievements</Text>
+          <View style={styles.achievementsGrid}>
+            <View style={styles.achievementBox}>
+              <Text style={styles.achievementNumber}>{overallStats?.totalSessions || 0}</Text>
+              <Text style={styles.achievementLabel}>Total Sessions</Text>
+            </View>
+            <View style={styles.achievementBox}>
+              <Text style={styles.achievementNumber}>{Math.round(overallStats?.totalMinutes || 0)}</Text>
+              <Text style={styles.achievementLabel}>Minutes</Text>
+            </View>
+            <View style={styles.achievementBox}>
+              <Text style={styles.achievementNumber}>{overallStats?.categoriesUsed || 0}</Text>
+              <Text style={styles.achievementLabel}>Categories</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Category Progress */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Category Progress</Text>
+          {Object.entries(categoryStats).map(([category, stats]) => (
+            <View key={category} style={styles.categoryCard}>
+              <View style={styles.categoryHeader}>
+                <Ionicons name={getCategoryIcon(category)} size={24} color="#4CAF50" />
+                <Text style={styles.categoryTitle}>
+                  {category.charAt(0).toUpperCase() + category.slice(1)}
+                </Text>
+              </View>
+              <View style={styles.categoryStats}>
+                <Text style={styles.categoryStatText}>
+                  Sessions: {stats.totalSessions}
+                </Text>
+                <Text style={styles.categoryStatText}>
+                  Minutes: {Math.round(stats.totalMinutes)}
+                </Text>
+                <Text style={styles.categoryStatText}>
+                  Last: {stats.lastSession ? formatDate(stats.lastSession) : 'Never'}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <TouchableOpacity style={styles.refreshButton} onPress={loadAllData}>
+          <Ionicons name="refresh" size={24} color="#fff" />
+          <Text style={styles.refreshButtonText}>Refresh Stats</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
 }
-
-const getMoodColor = (mood: string): string => {
-  const colors: { [key: string]: string } = {
-    'Happy': '#4CAF50',
-    'Calm': '#2196F3',
-    'Neutral': '#9E9E9E',
-    'Sad': '#FFC107',
-    'Anxious': '#FF9800',
-    'Angry': '#F44336',
-  };
-  return colors[mood] || '#9E9E9E';
-};
-
-const getMoodColorByValue = (value: number): string => {
-  const colors = ['#F44336', '#FF9800', '#FFC107', '#2196F3', '#4CAF50'];
-  return colors[Math.floor(value) - 1] || colors[2];
-};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
   },
-  loadingText: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    padding: 16,
-    textAlign: 'center',
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   content: {
     flex: 1,
-    padding: 16,
   },
   section: {
-    marginBottom: 24,
-    backgroundColor: '#F8F8F8',
-    borderRadius: 12,
     padding: 16,
+    backgroundColor: '#fff',
+    marginBottom: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
     marginBottom: 16,
   },
   statsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-around',
+    marginBottom: 16,
   },
   statItem: {
     alignItems: 'center',
@@ -320,7 +376,7 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#007AFF',
+    color: '#4CAF50',
   },
   statLabel: {
     fontSize: 14,
@@ -380,50 +436,69 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
-  achievementsContainer: {
-    marginTop: 8,
+  achievementsSection: {
+    marginTop: 16,
   },
-  achievementCard: {
+  achievementsGrid: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+  },
+  achievementBox: {
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    padding: 16,
+    borderRadius: 8,
+    minWidth: 100,
+  },
+  achievementNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+  },
+  achievementLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  categoryCard: {
     backgroundColor: '#F8F8F8',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
   },
-  achievementIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#E3F2FF',
-    justifyContent: 'center',
+  categoryHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 16,
+    marginBottom: 12,
   },
-  achievementIconCompleted: {
-    backgroundColor: '#007AFF',
-  },
-  achievementInfo: {
-    flex: 1,
-  },
-  achievementTitle: {
-    fontSize: 16,
+  categoryTitle: {
+    fontSize: 18,
     fontWeight: '600',
-    marginBottom: 4,
+    marginLeft: 12,
   },
-  achievementDescription: {
+  categoryStats: {
+    marginLeft: 36,
+  },
+  categoryStatText: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  progressBar: {
-    height: 4,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 2,
-    overflow: 'hidden',
+  refreshButton: {
+    flexDirection: 'row',
+    backgroundColor: '#4CAF50',
+    padding: 16,
+    borderRadius: 12,
+    margin: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#007AFF',
-    borderRadius: 2,
+  refreshButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 }); 
