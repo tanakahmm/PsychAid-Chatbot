@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = 'http://192.168.0.169:8000';
+const BASE_URL = 'http://0.0.0.0:8000';
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -44,10 +44,10 @@ export const ApiService = {
         ...entry,
         timestamp: new Date(entry.timestamp).toISOString(),
       };
-      const response = await api.post('/mood', formattedEntry);
+      const response = await api.post(`/mood`, formattedEntry);
       console.log('Save mood response:', response.data); // Debug log
       return response.data;
-    } catch (error) {
+    } catch (error : any) {
       console.error('Error saving mood entry:', error);
       // Log more details about the error
       if (error.response) {

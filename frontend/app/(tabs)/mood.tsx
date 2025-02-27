@@ -6,6 +6,7 @@ import { ApiService } from '../../services/api';
 import { useRouter } from 'expo-router';
 
 const MOODS = [
+  //{}, // Placeholder for the "null" mood
   { emoji: '😊', label: 'Happy', color: '#FFD700' },
   { emoji: '😌', label: 'Calm', color: '#90EE90' },
   { emoji: '😐', label: 'Neutral', color: '#E0E0E0' },
@@ -38,11 +39,12 @@ export default function MoodScreen() {
       };
       
       // First save the mood entry
-      await ApiService.saveMoodEntry(moodData);
-
+      const moodEntry = await ApiService.saveMoodEntry(moodData);
+      console.log('Saved mood entry:', moodEntry);
       // Generate the mood message
-      const moodMessage = generateMoodMessage(mood, moodData.note);
+      const moodMessage = generateMoodMessage(mood, moodEntry.data.note);
       
+      console.log(moodMessage);
       // Send the mood message to chat
       await ApiService.sendMessage(moodMessage);
 
@@ -59,7 +61,7 @@ export default function MoodScreen() {
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving mood:', error);
       Alert.alert('Error', 'Failed to save your mood. Please try again.');
     } finally {
@@ -105,10 +107,10 @@ export default function MoodScreen() {
         <TouchableOpacity
           style={[
             styles.saveButton,
-            (!selectedMood || isSaving) && styles.saveButtonDisabled
+            (selectedMood === null || isSaving) && styles.saveButtonDisabled
           ]}
           onPress={handleSaveMood}
-          disabled={!selectedMood || isSaving}
+          disabled={selectedMood === null || isSaving}
         >
           {isSaving ? (
             <Text style={styles.saveButtonText}>Saving...</Text>

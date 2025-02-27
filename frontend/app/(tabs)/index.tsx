@@ -289,7 +289,7 @@ export default function ChatScreen() {
             onChangeText={setInputText}
             placeholder="Type a message..."
             multiline
-            maxHeight={100}
+            //maxHeight={100}
             onSubmitEditing={() => handleSendMessage(inputText)}
           />
           <TouchableOpacity
