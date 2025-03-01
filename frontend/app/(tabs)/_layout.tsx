@@ -16,7 +16,7 @@ export default function TabLayout() {
         name="mood"
         options={{
           title: 'Mood',
-          tabBarIcon: ({ color }) => <TabBarIcon name="smile" color={color} />,
+          tabBarIcon: ({ color }) => <TabBarIcon name="smile" color={color}  />,
         }}
       />
       <Tabs.Screen
