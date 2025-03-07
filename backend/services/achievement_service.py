@@ -1,5 +1,4 @@
 from typing import List, Dict, Any
-from bson import ObjectId
 from datetime import datetime
 from database import get_database
 import logging
@@ -17,11 +16,6 @@ class AchievementService:
                 {"user_id": user_id}
             ).sort("timestamp", -1).to_list(length=None)
             
-            # Convert ObjectId to string for JSON serialization
-            for achievement in achievements:
-                achievement["_id"] = str(achievement["_id"])
-                achievement["user_id"] = str(achievement["user_id"])
-            
             return achievements
         except Exception as e:
             logger.error(f"Error getting achievements for user {user_id}: {str(e)}")
@@ -30,7 +24,8 @@ class AchievementService:
     async def create_achievement(self, user_id: str, achievement_data: Dict[str, Any]) -> Dict[str, Any]:
         try:
             achievement = {
-                "user_id": ObjectId(user_id),
+                "_id": achievement_data.get("_id", str(datetime.utcnow().timestamp())),
+                "user_id": user_id,
                 "title": achievement_data["title"],
                 "description": achievement_data["description"],
                 "category": achievement_data["category"],
@@ -39,10 +34,7 @@ class AchievementService:
                 "exerciseId": achievement_data.get("exerciseId")
             }
             
-            result = await self.achievements_collection.insert_one(achievement)
-            achievement["_id"] = str(result.inserted_id)
-            achievement["user_id"] = str(achievement["user_id"])
-            
+            await self.achievements_collection.insert_one(achievement)
             return achievement
         except Exception as e:
             logger.error(f"Error creating achievement for user {user_id}: {str(e)}")
@@ -56,7 +48,7 @@ class AchievementService:
             
             # Get user's existing achievements in this category
             existing_achievements = await self.achievements_collection.find({
-                "user_id": ObjectId(user_id),
+                "user_id": user_id,
                 "category": category
             }).to_list(length=None)
             
@@ -164,19 +156,14 @@ class AchievementService:
             
         except Exception as e:
             logger.error(f"Error checking achievements for user {user_id}: {str(e)}")
-            return [] 
+            return []
 
     async def get_child_achievements(self, child_id: str) -> List[Dict[str, Any]]:
         """Get achievements for a child user."""
         try:
             achievements = await self.achievements_collection.find(
-                {"user_id": ObjectId(child_id)}
+                {"user_id": child_id}
             ).sort("timestamp", -1).to_list(length=None)
-            
-            # Convert ObjectId to string for JSON serialization
-            for achievement in achievements:
-                achievement["_id"] = str(achievement["_id"])
-                achievement["user_id"] = str(achievement["user_id"])
             
             logger.info(f"Retrieved {len(achievements)} achievements for child {child_id}")
             return achievements

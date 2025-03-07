@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { saveAchievement } from '../utils/achievements';
+import { ApiService } from '../services/api';
 
 interface TimerState {
   duration: number;
@@ -62,23 +62,26 @@ export default function SelfCareScreen() {
   const handleTimerComplete = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     
-    // Save the achievement
-    const achievement = {
-      id: Date.now().toString(),
-      title: 'Self-Care Time',
-      description: `Completed a ${timer.duration / 60} minute self-care session`,
-      date: new Date().toISOString(),
-      duration: timer.duration,
-      category: 'selfcare' as const,
-    };
-    
-    await saveAchievement(achievement);
-
-    Alert.alert(
-      "Self-Care Time Complete",
-      "Great job taking time for yourself! This has been added to your achievements!",
-      [{ text: "OK", onPress: () => setShowTimer(false) }]
-    );
+    try {
+      // Create a unique exercise ID for self-care
+      const exerciseId = `self-care-${Date.now()}`;
+      
+      // Complete the exercise using the API
+      await ApiService.completeExercise(exerciseId);
+      
+      Alert.alert(
+        "Self-Care Time Complete",
+        "Great job taking time for yourself! This has been added to your achievements!",
+        [{ text: "OK", onPress: () => setShowTimer(false) }]
+      );
+    } catch (error) {
+      console.error('Error completing exercise:', error);
+      Alert.alert(
+        "Error",
+        "Failed to save your achievement. Please try again.",
+        [{ text: "OK" }]
+      );
+    }
   };
 
   const formatTime = (seconds: number) => {

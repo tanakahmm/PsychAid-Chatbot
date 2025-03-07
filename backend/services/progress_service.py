@@ -250,9 +250,9 @@ class ProgressService:
 
             if not entries:
                 return {
-                    "totalSessions": 0,
-                    "totalMinutes": 0,
-                    "lastSession": None
+                    "total_sessions": 0,
+                    "total_minutes": 0,
+                    "last_session": None
                 }
 
             total_sessions = len(entries)
@@ -262,10 +262,14 @@ class ProgressService:
                 default=None
             )
 
+            # Convert datetime to ISO format string if it exists
+            if last_session:
+                last_session = last_session.isoformat()
+
             return {
-                "totalSessions": total_sessions,
-                "totalMinutes": total_minutes,
-                "lastSession": last_session
+                "total_sessions": total_sessions,
+                "total_minutes": total_minutes,
+                "last_session": last_session
             }
         except Exception as e:
             logger.error(f"Error getting progress by category: {str(e)}")

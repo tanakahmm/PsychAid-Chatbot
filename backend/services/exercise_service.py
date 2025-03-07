@@ -1,5 +1,4 @@
 from typing import List, Dict, Any, Tuple
-from bson import ObjectId
 from datetime import datetime
 from database import get_database
 from .achievement_service import AchievementService
@@ -19,11 +18,6 @@ class ExerciseService:
                 {"user_id": user_id}
             ).sort("timestamp", -1).to_list(length=None)
             
-            # Convert ObjectId to string for JSON serialization
-            for exercise in exercises:
-                exercise["_id"] = str(exercise["_id"])
-                exercise["user_id"] = str(exercise["user_id"])
-            
             return exercises
         except Exception as e:
             logger.error(f"Error getting exercises for user {user_id}: {str(e)}")
@@ -32,7 +26,8 @@ class ExerciseService:
     async def create_exercise(self, user_id: str, exercise_data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         try:
             exercise = {
-                "user_id": ObjectId(user_id),
+                "_id": exercise_data["_id"],  # Use the provided ID
+                "user_id": user_id,
                 "name": exercise_data["name"],
                 "category": exercise_data["category"],
                 "duration": exercise_data.get("duration", 0),
@@ -40,9 +35,7 @@ class ExerciseService:
                 "timestamp": datetime.utcnow().isoformat()
             }
             
-            result = await self.exercises_collection.insert_one(exercise)
-            exercise["_id"] = str(result.inserted_id)
-            exercise["user_id"] = str(exercise["user_id"])
+            await self.exercises_collection.insert_one(exercise)
             
             # Check for achievements if exercise is completed
             achievements = []
@@ -61,17 +54,13 @@ class ExerciseService:
         try:
             # Update exercise
             result = await self.exercises_collection.find_one_and_update(
-                {"_id": ObjectId(exercise_id), "user_id": ObjectId(user_id)},
+                {"_id": exercise_id, "user_id": user_id},
                 {"$set": {"completed": True}},
                 return_document=True
             )
             
             if not result:
                 raise Exception("Exercise not found or not owned by user")
-            
-            # Convert ObjectId to string
-            result["_id"] = str(result["_id"])
-            result["user_id"] = str(result["user_id"])
             
             # Check for achievements
             achievements = await self.achievement_service.check_and_create_achievements(

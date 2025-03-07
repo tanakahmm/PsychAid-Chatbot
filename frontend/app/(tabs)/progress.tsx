@@ -16,6 +16,7 @@ import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ApiService } from '../../services/api';
 import { useFocusEffect } from '@react-navigation/native';
+import { LineChart } from 'react-native-chart-kit';
 
 interface MoodData {
   mood: string;
@@ -65,6 +66,19 @@ interface User {
   email: string;
 }
 
+interface CategoryProgress {
+  category: string;
+  totalSessions: number;
+  totalMinutes: number;
+  lastSession: string;
+}
+
+interface WeeklyProgress {
+  date: string;
+  totalMinutes: number;
+  sessions: number;
+}
+
 export default function ProgressScreen() {
   const [moodHistory, setMoodHistory] = useState<MoodEntry[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
@@ -76,6 +90,9 @@ export default function ProgressScreen() {
   const [isParent, setIsParent] = useState(false);
   const [childrenProgress, setChildrenProgress] = useState<ChildProgress[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [categoryProgress, setCategoryProgress] = useState<CategoryProgress[]>([]);
+  const [weeklyProgress, setWeeklyProgress] = useState<WeeklyProgress[]>([]);
+  const [milestones, setMilestones] = useState<Achievement[]>([]);
   const router = useRouter();
 
   const loadProgressData = useCallback(async (isRefresh = false) => {
@@ -107,11 +124,20 @@ export default function ProgressScreen() {
         }
       }
 
+      // Define categories to fetch
+      const categories = ['meditation', 'anxiety-management', 'sleep-hygiene', 'stress-relief', 'self-care'];
+
       // Load data in parallel
-      const [moodHistoryData, achievementsData, exercisesData] = await Promise.all([
+      const [
+        moodHistoryData,
+        achievementsData,
+        exercisesData,
+        weeklyProgressData
+      ] = await Promise.all([
         ApiService.getMoodHistory(),
         ApiService.getAchievements(),
-        ApiService.getExercises()
+        ApiService.getExercises(),
+        ApiService.getProgress()
       ]);
 
       // Update state with fetched data
@@ -126,10 +152,47 @@ export default function ProgressScreen() {
       if (Array.isArray(achievementsData)) {
         setAchievements(achievementsData);
         setTotalTime(calculateTotalTime(achievementsData));
+        // Filter and set milestones
+        const milestoneAchievements = achievementsData.filter(achievement => 
+          achievement.title.toLowerCase().includes('milestone')
+        );
+        setMilestones(milestoneAchievements);
       }
 
       if (Array.isArray(exercisesData)) {
         setExercises(exercisesData);
+      }
+
+      // Fetch category progress for each category
+      const categoryProgressPromises = categories.map(async (category) => {
+        try {
+          const data = await ApiService.getProgressByCategory(category);
+          return {
+            category,
+            totalSessions: data.total_sessions || 0,
+            totalMinutes: data.total_minutes || 0,
+            lastSession: data.last_session
+          };
+        } catch (error) {
+          console.error(`Error fetching progress for category ${category}:`, error);
+          return {
+            category,
+            totalSessions: 0,
+            totalMinutes: 0,
+            lastSession: null
+          };
+        }
+      });
+
+      const categoryProgressResults = await Promise.all(categoryProgressPromises);
+      setCategoryProgress(categoryProgressResults);
+
+      // Set weekly progress with proper error handling
+      if (weeklyProgressData?.weekly_progress && Array.isArray(weeklyProgressData.weekly_progress)) {
+        setWeeklyProgress(weeklyProgressData.weekly_progress);
+      } else {
+        console.warn('Invalid weekly progress data:', weeklyProgressData);
+        setWeeklyProgress([]);
       }
 
       // Load children's progress if parent
@@ -174,7 +237,11 @@ export default function ProgressScreen() {
 
     } catch (error: any) {
       console.error('Error loading progress data:', error);
-      setError('Unable to load progress data. Please try again later.');
+      if (error.name === 'AuthenticationError') {
+        setError('Session expired. Please log in again.');
+      } else {
+        setError('Unable to load progress data. Please try again later.');
+      }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -389,6 +456,84 @@ export default function ProgressScreen() {
     return colors[category] || '#9E9E9E';
   };
 
+  const renderCategoryProgress = () => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Category Progress</Text>
+      {categoryProgress.map((category, index) => (
+        <View key={index} style={styles.categoryProgressItem}>
+          <View style={[styles.categoryIcon, { backgroundColor: getCategoryColor(category.category) }]}>
+            <Ionicons name={getCategoryIcon(category.category)} size={24} color="#fff" />
+          </View>
+          <View style={styles.categoryContent}>
+            <Text style={styles.categoryTitle}>{category.category}</Text>
+            <Text style={styles.categoryStats}>
+              {category.totalSessions} sessions • {formatDuration(category.totalMinutes)}
+            </Text>
+            {category.lastSession && (
+              <Text style={styles.lastSession}>
+                Last session: {formatDate(category.lastSession)}
+              </Text>
+            )}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+
+  const renderWeeklyProgress = () => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Weekly Progress</Text>
+      {weeklyProgress.length > 0 ? (
+        <LineChart
+          data={{
+            labels: weeklyProgress.map(w => new Date(w.date).toLocaleDateString('en-US', { weekday: 'short' })),
+            datasets: [{
+              data: weeklyProgress.map(w => w.totalMinutes)
+            }]
+          }}
+          width={Dimensions.get('window').width - 64}
+          height={220}
+          chartConfig={{
+            backgroundColor: '#ffffff',
+            backgroundGradientFrom: '#ffffff',
+            backgroundGradientTo: '#ffffff',
+            decimalPlaces: 0,
+            color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`,
+            style: {
+              borderRadius: 16
+            }
+          }}
+          bezier
+          style={styles.chart}
+        />
+      ) : (
+        <Text style={styles.emptyText}>No weekly progress data available</Text>
+      )}
+    </View>
+  );
+
+  const renderMilestones = () => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Milestones</Text>
+      {milestones.length > 0 ? (
+        milestones.map((milestone, index) => (
+          <View key={milestone._id || index} style={styles.milestoneItem}>
+            <View style={[styles.milestoneIcon, { backgroundColor: getCategoryColor(milestone.category) }]}>
+              <Ionicons name="trophy" size={24} color="#fff" />
+            </View>
+            <View style={styles.milestoneContent}>
+              <Text style={styles.milestoneTitle}>{milestone.title}</Text>
+              <Text style={styles.milestoneDescription}>{milestone.description}</Text>
+              <Text style={styles.milestoneDate}>{formatDate(milestone.timestamp)}</Text>
+            </View>
+          </View>
+        ))
+      ) : (
+        <Text style={styles.emptyText}>No milestones achieved yet</Text>
+      )}
+    </View>
+  );
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -427,6 +572,9 @@ export default function ProgressScreen() {
         }
       >
         {renderQuickStats()}
+        {renderCategoryProgress()}
+        {renderWeeklyProgress()}
+        {renderMilestones()}
         {renderAchievements()}
         {renderMoodHistory()}
         {isParent && childrenProgress.map(child => renderChildProgress(child))}
@@ -593,5 +741,77 @@ const styles = StyleSheet.create({
   },
   childMoodHistory: {
     marginTop: 16,
+  },
+  categoryProgressItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 8,
+    padding: 12,
+  },
+  categoryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  categoryContent: {
+    flex: 1,
+  },
+  categoryTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+  },
+  categoryStats: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+  },
+  lastSession: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+  },
+  chart: {
+    marginVertical: 8,
+    borderRadius: 16,
+  },
+  milestoneItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 8,
+    padding: 12,
+  },
+  milestoneIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  milestoneContent: {
+    flex: 1,
+  },
+  milestoneTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+  },
+  milestoneDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+  },
+  milestoneDate: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
   },
 }); 

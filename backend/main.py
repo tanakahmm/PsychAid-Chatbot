@@ -687,10 +687,21 @@ async def get_linked_children(
 @app.get("/parent/child/{child_id}/mood/history")
 async def get_child_mood_history(
     child_id: str,
-    current_user: User = Depends(get_current_user)
+    token: str = Depends(oauth2_scheme),
+    auth_service: AuthService = Depends(get_auth_service),
+    mood_service: MoodService = Depends(get_mood_service)
 ):
     """Get mood history for a child."""
     try:
+        # Get current user from token
+        current_user = await auth_service.get_current_user(token)
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         # Verify user is a parent
         if current_user.user_type != "parent":
             raise HTTPException(
@@ -724,10 +735,21 @@ async def get_child_mood_history(
 @app.get("/parent/child/{child_id}/achievements")
 async def get_child_achievements(
     child_id: str,
-    current_user: User = Depends(get_current_user)
+    token: str = Depends(oauth2_scheme),
+    auth_service: AuthService = Depends(get_auth_service),
+    achievement_service: AchievementService = Depends(get_achievement_service)
 ):
     """Get achievements for a child."""
     try:
+        # Get current user from token
+        current_user = await auth_service.get_current_user(token)
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         # Verify user is a parent
         if current_user.user_type != "parent":
             raise HTTPException(
@@ -1269,6 +1291,78 @@ async def refresh_token(
         raise HTTPException(
             status_code=500,
             detail="Failed to refresh token"
+        )
+
+@app.post("/exercises/{exercise_id}/complete")
+async def complete_exercise(
+    exercise_id: str,
+    token: str = Depends(oauth2_scheme),
+    auth_service: AuthService = Depends(get_auth_service),
+    exercise_service: ExerciseService = Depends(get_exercise_service)
+):
+    """Complete an exercise and create achievements."""
+    try:
+        # Get current user from token
+        current_user = await auth_service.get_current_user(token)
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Complete exercise and get achievements
+        exercise, achievements = await exercise_service.complete_exercise(
+            str(current_user.id),
+            exercise_id
+        )
+
+        return {
+            "exercise": exercise,
+            "achievements": achievements
+        }
+
+    except Exception as e:
+        logger.error(f"Error completing exercise: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to complete exercise: {str(e)}"
+        )
+
+@app.post("/exercises")
+async def create_exercise(
+    exercise_data: dict,
+    token: str = Depends(oauth2_scheme),
+    auth_service: AuthService = Depends(get_auth_service),
+    exercise_service: ExerciseService = Depends(get_exercise_service)
+):
+    """Create a new exercise."""
+    try:
+        # Get current user from token
+        current_user = await auth_service.get_current_user(token)
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Create exercise
+        exercise, achievements = await exercise_service.create_exercise(
+            str(current_user.id),
+            exercise_data
+        )
+
+        return {
+            "exercise": exercise,
+            "achievements": achievements
+        }
+
+    except Exception as e:
+        logger.error(f"Error creating exercise: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create exercise: {str(e)}"
         )
 
 if __name__ == "__main__":

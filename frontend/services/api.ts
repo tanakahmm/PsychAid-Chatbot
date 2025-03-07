@@ -469,6 +469,10 @@ export const ApiService = {
       return response.data;
     } catch (error: any) {
       console.error('Error getting child mood history:', error);
+      if (error.response?.status === 401) {
+        // Let the interceptor handle token refresh
+        throw error;
+      }
       if (error.response?.status === 403) {
         throw new Error('Not authorized to access this child\'s mood history');
       }
@@ -595,27 +599,26 @@ export const ApiService = {
   getProgressByCategory: async (category: string): Promise<any> => {
     try {
       const response = await api.get(`/progress/category/${category}`);
+      if (!response.data) {
+        return {
+          total_sessions: 0,
+          total_minutes: 0,
+          last_session: null
+        };
+      }
       return response.data;
     } catch (error: any) {
+      console.error('Error getting progress by category:', error);
       if (error.response?.status === 401) {
         await AsyncStorage.removeItem('token');
         delete api.defaults.headers.common['Authorization'];
         throw new Error('Session expired. Please login again.');
       }
+      // Return default data structure on error
       return {
         total_sessions: 0,
         total_minutes: 0,
-        categories_used: 0,
-        latest_session: null,
-        mood_improvement: {
-          average: 0,
-          total_improvements: 0
-        },
-        engagement: {
-          average: 0,
-          total_sessions: 0
-        },
-        weekly_progress: []
+        last_session: null
       };
     }
   },
@@ -626,6 +629,13 @@ export const ApiService = {
       return response.data;
     } catch (error: any) {
       console.error('Error getting child achievements:', error);
+      if (error.response?.status === 401) {
+        // Let the interceptor handle token refresh
+        throw error;
+      }
+      if (error.response?.status === 403) {
+        throw new Error('Not authorized to access this child\'s achievements');
+      }
       // Return empty data structure instead of throwing
       return {
         achievements: [],
@@ -666,6 +676,20 @@ export const ApiService = {
     } catch (error) {
       console.error('Error getting exercises:', error);
       throw error;
+    }
+  },
+
+  async completeExercise(exerciseId: string): Promise<{ exercise: any; achievements: any[] }> {
+    try {
+      const response = await api.post(`/exercises/${exerciseId}/complete`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Error completing exercise:', error);
+      if (error.response?.status === 401) {
+        // Let the interceptor handle token refresh
+        throw error;
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to complete exercise');
     }
   },
 }; 

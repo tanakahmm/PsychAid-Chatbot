@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { saveAchievement } from '../utils/achievements';
+import { ApiService } from '../services/api';
 
 interface TimerState {
   duration: number;
@@ -62,23 +62,26 @@ export default function MeditationScreen() {
   const handleTimerComplete = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     
-    // Save the achievement
-    const achievement = {
-      id: Date.now().toString(),
-      title: 'Meditation Session',
-      description: `Completed a ${timer.duration / 60} minute meditation session`,
-      date: new Date().toISOString(),
-      duration: timer.duration,
-      category: 'meditation' as const,
-    };
-    
-    await saveAchievement(achievement);
-
-    Alert.alert(
-      "Meditation Complete",
-      "Great job! You've completed your meditation session. This has been added to your achievements!",
-      [{ text: "OK", onPress: () => setShowTimer(false) }]
-    );
+    try {
+      // Create a unique exercise ID for meditation
+      const exerciseId = `meditation-${Date.now()}`;
+      
+      // Complete the exercise using the API
+      await ApiService.completeExercise(exerciseId);
+      
+      Alert.alert(
+        "Meditation Complete",
+        "Great job! You've completed your meditation session. This has been added to your achievements!",
+        [{ text: "OK", onPress: () => setShowTimer(false) }]
+      );
+    } catch (error) {
+      console.error('Error completing exercise:', error);
+      Alert.alert(
+        "Error",
+        "Failed to save your achievement. Please try again.",
+        [{ text: "OK" }]
+      );
+    }
   };
 
   const formatTime = (seconds: number) => {

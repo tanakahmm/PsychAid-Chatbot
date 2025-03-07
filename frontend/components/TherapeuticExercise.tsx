@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { api } from '../services/api';
+import { v4 as uuidv4 } from 'uuid';
 
 interface Exercise {
   id: string;
@@ -30,10 +32,50 @@ export const TherapeuticExercise: React.FC<TherapeuticExerciseProps> = ({ exerci
       }, 1000);
     } else if (timeLeft === 0) {
       setIsActive(false);
-      if (onComplete) onComplete();
+      handleExerciseComplete();
     }
     return () => clearInterval(interval);
   }, [isActive, timeLeft]);
+
+  const handleExerciseComplete = async () => {
+    try {
+      // Create a unique exercise ID
+      const exerciseId = uuidv4();
+      
+      // Create the exercise first
+      const exerciseData = {
+        _id: exerciseId,
+        name: exercise.name,
+        category: exercise.category,
+        duration: exercise.duration,
+        completed: true,
+        timestamp: new Date().toISOString()
+      };
+
+      // Create the exercise
+      await api.post('/exercises', exerciseData);
+
+      // Now mark it as complete
+      const response = await api.post(`/exercises/${exerciseId}/complete`);
+      
+      if (response.data) {
+        Alert.alert(
+          "Exercise Complete",
+          "Great job! You've completed the exercise. This has been added to your achievements!",
+          [{ text: "OK", onPress: () => {
+            if (onComplete) onComplete();
+          }}]
+        );
+      }
+    } catch (error: any) {
+      console.error('Error completing exercise:', error);
+      Alert.alert(
+        "Error",
+        error.response?.data?.detail || "Failed to complete exercise. Please try again.",
+        [{ text: "OK" }]
+      );
+    }
+  };
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
