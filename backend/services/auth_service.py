@@ -203,9 +203,20 @@ class AuthService:
     async def get_user_by_id(self, user_id: str) -> Optional[User]:
         """Get user by ID."""
         try:
-            user = await self.db.users.find_one({"_id": ObjectId(user_id)})
+            # Convert string ID to ObjectId
+            if isinstance(user_id, str):
+                user_id = ObjectId(user_id)
+            elif isinstance(user_id, User):
+                user_id = ObjectId(user_id.id)
+            
+            user = await self.db.users.find_one({"_id": user_id})
             if user:
+                # Convert MongoDB document to User model
                 user["id"] = str(user["_id"])
+                if "linked_children" in user:
+                    user["linked_children"] = [str(child_id) for child_id in user["linked_children"]]
+                if "linked_parent" in user and user["linked_parent"]:
+                    user["linked_parent"] = str(user["linked_parent"])
                 return User(**user)
             return None
         except Exception as e:

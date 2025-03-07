@@ -75,26 +75,14 @@ export default function ProgressScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isParent, setIsParent] = useState(false);
   const [childrenProgress, setChildrenProgress] = useState<ChildProgress[]>([]);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const router = useRouter();
 
-  const loadUserType = async () => {
+  const loadProgressData = useCallback(async (isRefresh = false) => {
     try {
-      const userJson = await AsyncStorage.getItem('user');
-      if (userJson) {
-        const user = JSON.parse(userJson);
-        setIsParent(user.user_type === 'parent');
+      if (!isRefresh) {
+        setIsLoading(true);
       }
-    } catch (error) {
-      console.error('Error loading user type:', error);
-    }
-  };
-
-  const loadProgressData = async () => {
-    if (!isInitialLoad && !isLoading) return; // Prevent multiple simultaneous loads
-    
-    try {
-      setIsLoading(true);
       setError(null);
       
       const token = await AsyncStorage.getItem('token');
@@ -110,9 +98,8 @@ export default function ProgressScreen() {
       let currentUser: User | null = null;
       if (userJson) {
         try {
-          const parsedUser = JSON.parse(userJson);
-          if (parsedUser && typeof parsedUser === 'object' && 'user_type' in parsedUser) {
-            currentUser = parsedUser as User;
+          currentUser = JSON.parse(userJson);
+          if (currentUser && 'user_type' in currentUser) {
             setIsParent(currentUser.user_type === 'parent');
           }
         } catch (error) {
@@ -154,6 +141,7 @@ export default function ProgressScreen() {
             return;
           }
 
+          // Load all children's data in parallel
           const progressPromises = children.map(async (child) => {
             try {
               const [childAchievements, childMoodHistory] = await Promise.all([
@@ -189,19 +177,26 @@ export default function ProgressScreen() {
       setError('Unable to load progress data. Please try again later.');
     } finally {
       setIsLoading(false);
-      setIsInitialLoad(false);
+      setIsRefreshing(false);
     }
-  };
+  }, []);
 
+  // Load initial data
   useEffect(() => {
     loadProgressData();
-  }, []);
+  }, [loadProgressData]);
 
-  // Replace useFocusEffect with a simpler refresh mechanism
+  // Handle screen focus
+  useFocusEffect(
+    useCallback(() => {
+      loadProgressData(true);
+    }, [loadProgressData])
+  );
+
   const handleRefresh = useCallback(() => {
-    setIsInitialLoad(true);
-    loadProgressData();
-  }, []);
+    setIsRefreshing(true);
+    loadProgressData(true);
+  }, [loadProgressData]);
 
   const calculateDayStreak = (moodEntries: MoodEntry[]) => {
     if (!moodEntries.length) return 0;
@@ -425,7 +420,7 @@ export default function ProgressScreen() {
         style={styles.content}
         refreshControl={
           <RefreshControl
-            refreshing={isLoading}
+            refreshing={isRefreshing}
             onRefresh={handleRefresh}
             colors={['#4CAF50']}
           />

@@ -25,9 +25,9 @@ interface TimerState {
 export default function AnxietyScreen() {
   const [showTimer, setShowTimer] = useState(false);
   const [timer, setTimer] = useState<TimerState>({
-    duration: 180, // 3 minutes default
+    duration: 30, // 3 minutes default
     isActive: false,
-    timeLeft: 180,
+    timeLeft: 30,
   });
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 

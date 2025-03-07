@@ -1,4 +1,4 @@
-import axios, { AxiosError } from 'axios';
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { getEnvironment } from '../constants/Config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -19,6 +19,11 @@ const setAuthToken = (token: string | null) => {
     delete api.defaults.headers.common['Authorization'];
   }
 };
+
+// Add this interface at the top of the file, after the imports
+interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+}
 
 // Request interceptor
 api.interceptors.request.use(
@@ -42,10 +47,12 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config as CustomAxiosRequestConfig;
     
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       try {
+        originalRequest._retry = true;
+        
         // Try to refresh token
         const refreshToken = await AsyncStorage.getItem('refresh_token');
         if (refreshToken) {
@@ -67,6 +74,9 @@ api.interceptors.response.use(
         // If refresh fails, clear all tokens and user data
         await AsyncStorage.multiRemove(['token', 'refresh_token', 'user', 'user_id']);
         setAuthToken(null);
+        
+        // Redirect to login or handle session expiry
+        // You might want to add a navigation service here
       }
       
       // Create a standardized error
