@@ -42,6 +42,10 @@
       "eas": {
         "projectId": "your-project-id"
       }
+    },
+    "owner": "your-expo-username",
+    "experiments": {
+      "tsconfigPaths": true
     }
   }
 }

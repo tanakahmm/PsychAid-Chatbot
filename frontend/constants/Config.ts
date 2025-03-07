@@ -11,12 +11,22 @@ interface ConfigType {
 }
 
 const getLocalIpAddress = (): string => {
+  // For physical iOS device or Android device
+  if (!__DEV__) {
+    return 'https://your-production-api.com';
+  }
+  
   // For iOS simulator
   if (Platform.OS === 'ios') {
-    return 'http://127.0.0.1:8000';
+    return 'http://192.168.0.169:8000';
   }
+  
   // For Android emulator
-  return 'http://10.0.2.2:8000';
+  if (Platform.OS === 'android') {
+    return 'http://192.168.0.169:8000';
+  }
+  
+  return 'http://192.168.0.169:8000';
 };
 
 const Config: ConfigType = {
