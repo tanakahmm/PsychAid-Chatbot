@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # Constants
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -134,6 +135,28 @@ class AuthService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Could not create access token"
             )
+
+    def create_refresh_token(self, data: dict) -> str:
+        to_encode = data.copy()
+        expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        to_encode.update({"exp": expire})
+        encoded_jwt = jwt.encode(to_encode, self.secret_key, algorithm=ALGORITHM)
+        return encoded_jwt
+
+    async def verify_refresh_token(self, refresh_token: str) -> Optional[Dict[str, Any]]:
+        try:
+            payload = jwt.decode(refresh_token, self.secret_key, algorithms=[ALGORITHM])
+            user_id = payload.get("user_id")
+            if user_id is None:
+                return None
+
+            user = await self.get_user_by_id(user_id)
+            if user is None:
+                return None
+
+            return user
+        except JWTError:
+            return None
 
     async def get_current_user(self, token: str) -> Optional[User]:
         """Get current user from token."""

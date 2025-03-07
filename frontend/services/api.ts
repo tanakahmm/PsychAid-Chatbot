@@ -45,9 +45,29 @@ api.interceptors.response.use(
     const originalRequest = error.config;
     
     if (error.response?.status === 401) {
-      // Clear token and user data
-      await AsyncStorage.multiRemove(['token', 'user', 'user_id']);
-      setAuthToken(null);
+      try {
+        // Try to refresh token
+        const refreshToken = await AsyncStorage.getItem('refresh_token');
+        if (refreshToken) {
+          const response = await api.post('/auth/refresh', {
+            refresh_token: refreshToken
+          });
+          
+          const { access_token } = response.data;
+          await AsyncStorage.setItem('token', access_token);
+          setAuthToken(access_token);
+          
+          // Retry the original request
+          if (originalRequest) {
+            originalRequest.headers.Authorization = `Bearer ${access_token}`;
+            return api(originalRequest);
+          }
+        }
+      } catch (refreshError) {
+        // If refresh fails, clear all tokens and user data
+        await AsyncStorage.multiRemove(['token', 'refresh_token', 'user', 'user_id']);
+        setAuthToken(null);
+      }
       
       // Create a standardized error
       const authError = new Error('Session expired. Please login again.');
@@ -120,23 +140,26 @@ export const ApiService = {
         },
       });
 
-      if (!response.data || !response.data.access_token) {
+      if (!response.data || !response.data.access_token || !response.data.refresh_token) {
         throw new Error('Invalid response from server');
       }
 
-      const { access_token, user } = response.data;
+      const { access_token, refresh_token, user } = response.data;
       
       // Store auth data
-      await AsyncStorage.setItem('token', access_token);
-      await AsyncStorage.setItem('user', JSON.stringify(user));
-      await AsyncStorage.setItem('user_id', user.id);
+      await AsyncStorage.multiSet([
+        ['token', access_token],
+        ['refresh_token', refresh_token],
+        ['user', JSON.stringify(user)],
+        ['user_id', user.id]
+      ]);
       
       // Set token in axios
       setAuthToken(access_token);
 
       return response.data;
     } catch (error: any) {
-      await AsyncStorage.multiRemove(['token', 'user', 'user_id']);
+      await AsyncStorage.multiRemove(['token', 'refresh_token', 'user', 'user_id']);
       setAuthToken(null);
       
       if (error.response?.status === 401) {
@@ -376,17 +399,57 @@ export const ApiService = {
     }
   },
 
-  getLinkedChildren: async (): Promise<Array<{ id: string, name: string }>> => {
+  getLinkedChildren: async (): Promise<Array<{ id: string, name: string, email: string }>> => {
     try {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        console.error('No authentication token found');
+        throw new Error('No authentication token found');
+      }
+
+      console.log('Fetching linked children...');
       const response = await api.get('/users/linked-children');
+      console.log('Linked children response:', response.data);
+      
+      if (!response.data) {
+        console.error('No data in response');
+        return [];
+      }
+      
+      if (!Array.isArray(response.data.children)) {
+        console.error('Invalid response format:', response.data);
+        return [];
+      }
+      
+      console.log(`Found ${response.data.children.length} linked children`);
       return response.data.children;
     } catch (error: any) {
+      console.error('Error getting linked children:', {
+        status: error.response?.status,
+        message: error.response?.data?.detail || error.message,
+        data: error.response?.data,
+        stack: error.stack
+      });
+      
       if (error.response?.status === 401) {
         await AsyncStorage.removeItem('token');
         delete api.defaults.headers.common['Authorization'];
         throw new Error('Session expired. Please login again.');
       }
-      throw error;
+      
+      if (error.response?.status === 403) {
+        throw new Error('Not authorized to view children');
+      }
+      
+      if (error.response?.status === 404) {
+        throw new Error('User not found');
+      }
+      
+      if (error.response?.status === 500) {
+        throw new Error(error.response?.data?.detail || 'Server error while fetching linked children');
+      }
+      
+      return [];
     }
   },
 
@@ -395,10 +458,11 @@ export const ApiService = {
       const response = await api.get(`/parent/child/${childId}/mood/history`);
       return response.data;
     } catch (error: any) {
+      console.error('Error getting child mood history:', error);
       if (error.response?.status === 403) {
         throw new Error('Not authorized to access this child\'s mood history');
       }
-      throw new Error(error.response?.data?.detail || 'Failed to fetch child\'s mood history');
+      return [];
     }
   },
 
@@ -548,11 +612,20 @@ export const ApiService = {
 
   getChildAchievements: async (childId: string) => {
     try {
-      const response = await api.get(`/progress/child/${childId}`);
+      const response = await api.get(`/parent/child/${childId}/achievements`);
       return response.data;
     } catch (error: any) {
-      console.error('Get child achievements error:', error);
-      throw error;
+      console.error('Error getting child achievements:', error);
+      // Return empty data structure instead of throwing
+      return {
+        achievements: [],
+        stats: {
+          total_sessions: 0,
+          total_minutes: 0,
+          categories_used: [],
+          last_session: null
+        }
+      };
     }
   },
 
@@ -565,6 +638,26 @@ export const ApiService = {
       throw error;
     }
   },
-};
+
+  async getAchievements(): Promise<any[]> {
+    try {
+      const response = await api.get('/achievements');
+      return response.data || [];
+    } catch (error) {
+      console.error('Error getting achievements:', error);
+      throw error;
+    }
+  },
+
+  async getExercises(): Promise<any[]> {
+    try {
+      const response = await api.get('/exercises');
+      return response.data || [];
+    } catch (error) {
+      console.error('Error getting exercises:', error);
+      throw error;
+    }
+  },
+}; 
 
 export default api; 

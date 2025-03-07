@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Dimensions,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,109 +31,209 @@ interface MoodEntry {
   user_id: string;
 }
 
-interface Activity {
-  category: string;
+interface Exercise {
+  _id: string;
+  name: string;
   duration: number;
   timestamp: string;
   completed: boolean;
+  category: string;
 }
 
 interface Achievement {
-  id: string;
+  _id: string;
   title: string;
   description: string;
-  category: string;
   timestamp: string;
-  icon: string;
+  exerciseId: string;
+  category: string;
+  duration: number;
 }
 
-interface ProgressData {
-  totalMinutes: number;
-  totalSessions: number;
-  streak: number;
-  moodHistory: MoodEntry[];
-  recentActivities: Activity[];
+interface ChildProgress {
+  id: string;
+  name: string;
+  totalTime: number;
   achievements: Achievement[];
+  dayStreak: number;
+  moodHistory: MoodEntry[];
+}
+
+interface User {
+  user_type: 'parent' | 'student';
+  name: string;
+  email: string;
 }
 
 export default function ProgressScreen() {
   const [moodHistory, setMoodHistory] = useState<MoodEntry[]>([]);
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [totalTime, setTotalTime] = useState(0);
+  const [dayStreak, setDayStreak] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isParent, setIsParent] = useState(false);
+  const [childrenProgress, setChildrenProgress] = useState<ChildProgress[]>([]);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const router = useRouter();
 
-  const loadMoodHistory = async () => {
+  const loadUserType = async () => {
     try {
-      console.log('Starting to load mood history...');
-      setIsLoading(true);
-      setError(null);
-      
-      // Check if user is logged in
-      const token = await AsyncStorage.getItem('token');
-      const userId = await AsyncStorage.getItem('user_id');
-      
-      console.log('Auth check:', { hasToken: !!token, hasUserId: !!userId });
-      
-      if (!token || !userId) {
-        console.log('No token or user ID found');
-        setError('Please log in to view your mood history');
-        setIsLoading(false);
-        return;
+      const userJson = await AsyncStorage.getItem('user');
+      if (userJson) {
+        const user = JSON.parse(userJson);
+        setIsParent(user.user_type === 'parent');
       }
-
-      console.log('Loading mood history for user:', userId);
-      const history = await ApiService.getMoodHistory();
-      console.log('Mood history loaded:', history);
-      
-      if (!Array.isArray(history)) {
-        console.error('Invalid history data received:', history);
-        setError('Unable to load mood history. Please try again later.');
-        setMoodHistory([]);
-      } else {
-        console.log(`Received ${history.length} mood entries`);
-        // Sort history by timestamp in descending order (newest first)
-        const sortedHistory = history.sort((a, b) => 
-          new Date(b.mood.timestamp).getTime() - new Date(a.mood.timestamp).getTime()
-        );
-        setMoodHistory(sortedHistory);
-      }
-    } catch (error: any) {
-      console.error('Error loading mood history:', {
-        error,
-        status: error.response?.status,
-        message: error.response?.data?.detail || error.message,
-        data: error.response?.data
-      });
-      
-      if (error.message?.includes('Session expired')) {
-        setError('Your session has expired. Please log in again.');
-      } else if (error.response?.status === 404) {
-        setError('No mood history found. Start tracking your mood to see your progress!');
-      } else if (error.response?.status === 500) {
-        setError('Server error. Please try again later.');
-      } else {
-        setError('Unable to load mood history at this time. Please try again later.');
-      }
-      setMoodHistory([]);
-    } finally {
-      console.log('Finished loading mood history');
-      setIsLoading(false);
+    } catch (error) {
+      console.error('Error loading user type:', error);
     }
   };
 
-  // Load data when component mounts
+  const loadProgressData = async () => {
+    if (!isInitialLoad && !isLoading) return; // Prevent multiple simultaneous loads
+    
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      const token = await AsyncStorage.getItem('token');
+      const userId = await AsyncStorage.getItem('user_id');
+      const userJson = await AsyncStorage.getItem('user');
+      
+      if (!token || !userId) {
+        setError('Please log in to view your progress');
+        return;
+      }
+
+      // Load user type and check if parent
+      let currentUser: User | null = null;
+      if (userJson) {
+        try {
+          const parsedUser = JSON.parse(userJson);
+          if (parsedUser && typeof parsedUser === 'object' && 'user_type' in parsedUser) {
+            currentUser = parsedUser as User;
+            setIsParent(currentUser.user_type === 'parent');
+          }
+        } catch (error) {
+          console.error('Error parsing user data:', error);
+        }
+      }
+
+      // Load data in parallel
+      const [moodHistoryData, achievementsData, exercisesData] = await Promise.all([
+        ApiService.getMoodHistory(),
+        ApiService.getAchievements(),
+        ApiService.getExercises()
+      ]);
+
+      // Update state with fetched data
+      if (Array.isArray(moodHistoryData)) {
+        const sortedHistory = moodHistoryData.sort((a, b) => 
+          new Date(b.mood.timestamp).getTime() - new Date(a.mood.timestamp).getTime()
+        );
+        setMoodHistory(sortedHistory);
+        setDayStreak(calculateDayStreak(sortedHistory));
+      }
+
+      if (Array.isArray(achievementsData)) {
+        setAchievements(achievementsData);
+        setTotalTime(calculateTotalTime(achievementsData));
+      }
+
+      if (Array.isArray(exercisesData)) {
+        setExercises(exercisesData);
+      }
+
+      // Load children's progress if parent
+      if (currentUser?.user_type === 'parent') {
+        try {
+          const children = await ApiService.getLinkedChildren();
+          if (children.length === 0) {
+            setChildrenProgress([]);
+            return;
+          }
+
+          const progressPromises = children.map(async (child) => {
+            try {
+              const [childAchievements, childMoodHistory] = await Promise.all([
+                ApiService.getChildAchievements(child.id),
+                ApiService.getChildMoodHistory(child.id)
+              ]);
+
+              return {
+                id: child.id,
+                name: child.name,
+                totalTime: childAchievements.totalMinutes || 0,
+                achievements: childAchievements.achievements || [],
+                dayStreak: calculateDayStreak(childMoodHistory),
+                moodHistory: childMoodHistory
+              } as ChildProgress;
+            } catch (childError) {
+              console.error('Error loading child progress:', child.name, childError);
+              return null;
+            }
+          });
+          
+          const progress = (await Promise.all(progressPromises))
+            .filter((p): p is ChildProgress => p !== null);
+          setChildrenProgress(progress);
+        } catch (parentError) {
+          console.error('Error loading children data:', parentError);
+          setChildrenProgress([]);
+        }
+      }
+
+    } catch (error: any) {
+      console.error('Error loading progress data:', error);
+      setError('Unable to load progress data. Please try again later.');
+    } finally {
+      setIsLoading(false);
+      setIsInitialLoad(false);
+    }
+  };
+
   useEffect(() => {
-    console.log('Progress screen mounted, loading mood history...');
-    loadMoodHistory();
+    loadProgressData();
   }, []);
 
-  // Reload data when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      console.log('Progress screen focused, reloading mood history...');
-      loadMoodHistory();
-    }, [])
-  );
+  // Replace useFocusEffect with a simpler refresh mechanism
+  const handleRefresh = useCallback(() => {
+    setIsInitialLoad(true);
+    loadProgressData();
+  }, []);
+
+  const calculateDayStreak = (moodEntries: MoodEntry[]) => {
+    if (!moodEntries.length) return 0;
+    
+    const sortedEntries = [...moodEntries].sort((a, b) => 
+      new Date(b.mood.timestamp).getTime() - new Date(a.mood.timestamp).getTime()
+    );
+
+    let streak = 1;
+    let currentDate = new Date(sortedEntries[0].mood.timestamp);
+    currentDate.setHours(0, 0, 0, 0);
+
+    for (let i = 1; i < sortedEntries.length; i++) {
+      const entryDate = new Date(sortedEntries[i].mood.timestamp);
+      entryDate.setHours(0, 0, 0, 0);
+
+      const diffDays = Math.floor((currentDate.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 1) {
+        streak++;
+        currentDate = entryDate;
+      } else if (diffDays > 1) {
+        break;
+      }
+    }
+
+    return streak;
+  };
+
+  const calculateTotalTime = (achievements: Achievement[]) => {
+    return achievements.reduce((total, achievement) => total + (achievement.duration || 0), 0);
+  };
 
   const getMoodColor = (mood: string): string => {
     const colors: { [key: string]: string } = {
@@ -146,6 +247,17 @@ export default function ProgressScreen() {
     return colors[mood] || '#9E9E9E';
   };
 
+  const getCategoryIcon = (category: string): keyof typeof Ionicons.glyphMap => {
+    const icons: { [key: string]: keyof typeof Ionicons.glyphMap } = {
+      'meditation': 'leaf-outline',
+      'anxiety-management': 'heart-outline',
+      'sleep-hygiene': 'moon-outline',
+      'stress-relief': 'water-outline',
+      'self-care': 'happy-outline',
+    };
+    return icons[category] || 'trophy-outline';
+  };
+
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
@@ -156,26 +268,96 @@ export default function ProgressScreen() {
     });
   };
 
+  const formatDuration = (minutes: number): string => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  };
+
   const renderQuickStats = () => (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Overview</Text>
       <View style={styles.quickStats}>
         <View style={styles.quickStatItem}>
           <Ionicons name="time-outline" size={32} color="#4CAF50" />
-          <Text style={styles.quickStatValue}>{moodHistory.length * 30}</Text>
-          <Text style={styles.quickStatLabel}>Minutes</Text>
+          <Text style={styles.quickStatValue}>{formatDuration(totalTime)}</Text>
+          <Text style={styles.quickStatLabel}>Total Time</Text>
         </View>
         <View style={styles.quickStatItem}>
-          <Ionicons name="calendar-outline" size={32} color="#2196F3" />
-          <Text style={styles.quickStatValue}>{moodHistory.length}</Text>
-          <Text style={styles.quickStatLabel}>Sessions</Text>
+          <Ionicons name="trophy-outline" size={32} color="#2196F3" />
+          <Text style={styles.quickStatValue}>{achievements.length}</Text>
+          <Text style={styles.quickStatLabel}>Achievements</Text>
         </View>
         <View style={styles.quickStatItem}>
           <Ionicons name="flame-outline" size={32} color="#FF9800" />
-          <Text style={styles.quickStatValue}>{moodHistory.length}</Text>
+          <Text style={styles.quickStatValue}>{dayStreak}</Text>
           <Text style={styles.quickStatLabel}>Day Streak</Text>
         </View>
       </View>
+    </View>
+  );
+
+  const renderAchievements = () => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Recent Achievements</Text>
+      {achievements.length > 0 ? (
+        achievements.map((achievement, index) => (
+          <View key={achievement._id || index} style={styles.achievementEntry}>
+            <View style={[styles.achievementIcon, { backgroundColor: getCategoryColor(achievement.category) }]}>
+              <Ionicons name={getCategoryIcon(achievement.category)} size={24} color="#fff" />
+            </View>
+            <View style={styles.achievementContent}>
+              <Text style={styles.achievementTitle}>{achievement.title}</Text>
+              <Text style={styles.achievementDescription}>{achievement.description}</Text>
+              <Text style={styles.achievementTime}>
+                {formatDate(achievement.timestamp)} • {formatDuration(achievement.duration)}
+              </Text>
+            </View>
+          </View>
+        ))
+      ) : (
+        <Text style={styles.emptyText}>No achievements yet</Text>
+      )}
+    </View>
+  );
+
+  const renderChildProgress = (child: ChildProgress) => (
+    <View key={child.id} style={styles.section}>
+      <Text style={styles.sectionTitle}>{child.name}'s Progress</Text>
+      <View style={styles.quickStats}>
+        <View style={styles.quickStatItem}>
+          <Ionicons name="time-outline" size={32} color="#4CAF50" />
+          <Text style={styles.quickStatValue}>{formatDuration(child.totalTime)}</Text>
+          <Text style={styles.quickStatLabel}>Total Time</Text>
+        </View>
+        <View style={styles.quickStatItem}>
+          <Ionicons name="trophy-outline" size={32} color="#2196F3" />
+          <Text style={styles.quickStatValue}>{child.achievements.length}</Text>
+          <Text style={styles.quickStatLabel}>Achievements</Text>
+        </View>
+        <View style={styles.quickStatItem}>
+          <Ionicons name="flame-outline" size={32} color="#FF9800" />
+          <Text style={styles.quickStatValue}>{child.dayStreak}</Text>
+          <Text style={styles.quickStatLabel}>Day Streak</Text>
+        </View>
+      </View>
+      {child.moodHistory.length > 0 && (
+        <View style={styles.childMoodHistory}>
+          <Text style={styles.subsectionTitle}>Recent Moods</Text>
+          {child.moodHistory.slice(0, 3).map((entry, index) => (
+            <View key={index} style={styles.moodEntry}>
+              <View style={[styles.moodIndicator, { backgroundColor: getMoodColor(entry.mood.mood) }]} />
+              <View style={styles.moodContent}>
+                <Text style={styles.moodText}>{entry.mood.mood}</Text>
+                {entry.mood.note && entry.mood.note !== "" && (
+                  <Text style={styles.moodNote}>{entry.mood.note}</Text>
+                )}
+                <Text style={styles.moodTime}>{formatDate(entry.mood.timestamp)}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 
@@ -201,6 +383,17 @@ export default function ProgressScreen() {
     </View>
   );
 
+  const getCategoryColor = (category: string): string => {
+    const colors: { [key: string]: string } = {
+      'meditation': '#4CAF50',
+      'anxiety-management': '#2196F3',
+      'sleep-hygiene': '#673AB7',
+      'stress-relief': '#FF9800',
+      'self-care': '#E91E63',
+    };
+    return colors[category] || '#9E9E9E';
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -218,7 +411,7 @@ export default function ProgressScreen() {
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle-outline" size={48} color="#FF3B30" />
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadMoodHistory}>
+          <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
             <Text style={styles.retryButtonText}>Try Again</Text>
           </TouchableOpacity>
         </View>
@@ -228,9 +421,20 @@ export default function ProgressScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoading}
+            onRefresh={handleRefresh}
+            colors={['#4CAF50']}
+          />
+        }
+      >
         {renderQuickStats()}
+        {renderAchievements()}
         {renderMoodHistory()}
+        {isParent && childrenProgress.map(child => renderChildProgress(child))}
       </ScrollView>
     </SafeAreaView>
   );
@@ -294,6 +498,13 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 16,
   },
+  subsectionTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#666',
+    marginTop: 16,
+    marginBottom: 8,
+  },
   quickStats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -350,5 +561,42 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  achievementEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 8,
+    padding: 12,
+  },
+  achievementIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  achievementContent: {
+    flex: 1,
+  },
+  achievementTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+  },
+  achievementDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+  },
+  achievementTime: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+  },
+  childMoodHistory: {
+    marginTop: 16,
   },
 }); 

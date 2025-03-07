@@ -18,6 +18,8 @@ from database import connect_to_mongo, close_mongo_connection, get_database
 from bson import ObjectId
 from passlib.context import CryptContext
 from services.progress_service import ProgressService
+from services.achievement_service import AchievementService
+from services.exercise_service import ExerciseService
 
 # Enhanced logging
 logging.basicConfig(
@@ -36,6 +38,8 @@ auth_service = None
 mood_service = None
 chat_service = None
 progress_service = None
+achievement_service = None
+exercise_service = None
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -85,6 +89,22 @@ async def get_progress_service() -> ProgressService:
         )
     return progress_service
 
+async def get_achievement_service() -> AchievementService:
+    if achievement_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Achievement service not initialized"
+        )
+    return achievement_service
+
+async def get_exercise_service() -> ExerciseService:
+    if exercise_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Exercise service not initialized"
+        )
+    return exercise_service
+
 @app.on_event("startup")
 async def startup_db_client():
     """Initialize database connection and services on startup."""
@@ -93,11 +113,13 @@ async def startup_db_client():
         await connect_to_mongo()
         
         # Initialize services after database connection
-        global auth_service, mood_service, chat_service, progress_service
+        global auth_service, mood_service, chat_service, progress_service, achievement_service, exercise_service
         auth_service = AuthService()
         mood_service = MoodService()
         chat_service = ChatService(GROQ_API_KEY)
         progress_service = ProgressService()
+        achievement_service = AchievementService()
+        exercise_service = ExerciseService()
         
         logger.info("Database connection and services initialized successfully")
     except Exception as e:
@@ -396,22 +418,24 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # Create access token
+        # Create access and refresh tokens
         access_token = auth_service.create_access_token(
-            data={"user_id": str(user.id)}
+            data={"user_id": user.id}
+        )
+        refresh_token = auth_service.create_refresh_token(
+            data={"user_id": user.id}
         )
 
         # Get user's linked children if they exist
-        linked_children = []
-        if hasattr(user, 'linked_children') and user.linked_children:
-            linked_children = user.linked_children
+        linked_children = user.linked_children if hasattr(user, 'linked_children') else []
 
         logger.info(f"Login successful for {email} ({user_type})")
         return {
             "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user": {
-                "id": str(user.id),
+                "id": user.id,
                 "email": user.email,
                 "name": user.name,
                 "last_name": user.last_name,
@@ -602,68 +626,147 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=401, detail="Could not validate credentials")
 
 @app.get("/users/linked-children")
-async def get_linked_children(token: str = Depends(oauth2_scheme)):
+async def get_linked_children(
+    token: str = Depends(oauth2_scheme),
+    auth_service: AuthService = Depends(get_auth_service)
+):
     try:
-        user_id = await auth_service.get_current_user(token)
-        user = await auth_service.get_user_by_id(user_id)
-        if not user or user["user_type"] != "parent":
-            raise HTTPException(status_code=403, detail="Not authorized to view children")
+        # Get current user from token
+        logger.info("Starting get_linked_children endpoint")
+        current_user = await auth_service.get_current_user(token)
+        logger.info(f"Current user from token: {current_user}")
+        
+        if not current_user:
+            logger.error("No current user found from token")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Check if user is a parent
+        if current_user.user_type != "parent":
+            logger.error(f"User {current_user.email} is not a parent")
+            raise HTTPException(status_code=403, detail="Only parents can access linked children")
+        
+        logger.info(f"Fetching linked children for parent: {current_user.email}")
         
         children = []
-        for child_id in user.get("linked_children", []):
-            child = await auth_service.get_user_by_id(child_id)
-            if child:
-                children.append({
-                    "id": str(child["_id"]),
-                    "name": f"{child['name']} {child['last_name']}",
-                    "email": child["email"]
-                })
+        for child_id in current_user.linked_children or []:
+            try:
+                # Convert ObjectId to string if needed
+                child_id_str = str(child_id) if isinstance(child_id, ObjectId) else child_id
+                logger.info(f"Fetching child with ID: {child_id_str}")
+                
+                child = await auth_service.get_user_by_id(child_id_str)
+                if child:
+                    logger.info(f"Found child: {child.email}")
+                    children.append({
+                        "id": str(child.id),
+                        "name": f"{child.name} {child.last_name}",
+                        "email": child.email
+                    })
+                else:
+                    logger.warning(f"Child not found for ID: {child_id_str}")
+            except Exception as child_error:
+                logger.error(f"Error fetching child {child_id}: {str(child_error)}")
+                continue
         
+        logger.info(f"Returning {len(children)} linked children")
         return {"children": children}
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=401, detail="Could not validate credentials")
+        logger.error(f"Error getting linked children: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch linked children: {str(e)}"
+        )
 
 @app.get("/parent/child/{child_id}/mood/history")
 async def get_child_mood_history(
     child_id: str,
-    auth: AuthService = Depends(get_auth_service),
-    mood: MoodService = Depends(get_mood_service)
+    current_user: User = Depends(get_current_user)
 ):
+    """Get mood history for a child."""
     try:
-        current_user = await auth.get_current_user()
-        # Verify parent has access to this child
-        parent = await auth.get_user_by_id(current_user)
-        if not parent or parent["user_type"] != "parent" or child_id not in parent.get("linked_children", []):
-            raise HTTPException(status_code=403, detail="Not authorized to access this child's data")
+        # Verify user is a parent
+        if current_user.user_type != "parent":
+            raise HTTPException(
+                status_code=403,
+                detail="Only parents can access child mood history"
+            )
         
-        return await mood.get_mood_history(child_id)
+        # Verify child is linked to parent
+        child_id_str = str(child_id)
+        if child_id_str not in [str(child_id) for child_id in current_user.linked_children]:
+            raise HTTPException(
+                status_code=403,
+                detail="Child not linked to parent"
+            )
+        
+        # Get child's mood history
+        logger.info(f"Fetching mood history for child: {child_id_str}")
+        entries = await mood_service.get_child_mood_history(child_id_str)
+        logger.info(f"Found {len(entries)} mood entries for child")
+        return entries
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting child mood history: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch child's mood history")
+        logger.error(f"Error getting child mood history: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get child mood history"
+        )
 
 @app.get("/parent/child/{child_id}/achievements")
 async def get_child_achievements(
     child_id: str,
-    auth: AuthService = Depends(get_auth_service)
+    current_user: User = Depends(get_current_user)
 ):
+    """Get achievements for a child."""
     try:
-        current_user = await auth.get_current_user()
-        # Verify parent has access to this child
-        parent = await auth.get_user_by_id(current_user)
-        if not parent or parent["user_type"] != "parent" or child_id not in parent.get("linked_children", []):
-            raise HTTPException(status_code=403, detail="Not authorized to access this child's data")
+        # Verify user is a parent
+        if current_user.user_type != "parent":
+            raise HTTPException(
+                status_code=403,
+                detail="Only parents can access child achievements"
+            )
         
-        db = get_database()
-        achievements = await db.achievements.find({"user_id": ObjectId(child_id)}).to_list(None)
-        return {
-            "totalSessions": sum(1 for a in achievements if a.get("type") == "session"),
-            "totalMinutes": sum(a.get("duration", 0) for a in achievements),
-            "categoriesUsed": len(set(a.get("category") for a in achievements)),
-            "lastSession": max((a.get("timestamp") for a in achievements if a.get("timestamp")), default=None)
+        # Verify child is linked to parent
+        child_id_str = str(child_id)
+        if child_id_str not in [str(child_id) for child_id in current_user.linked_children]:
+            raise HTTPException(
+                status_code=403,
+                detail="Child not linked to parent"
+            )
+        
+        # Get achievements using the achievement service
+        achievements = await achievement_service.get_child_achievements(child_id)
+        
+        # Calculate statistics
+        stats = {
+            "total_sessions": len(achievements),
+            "total_minutes": sum(achievement.get("duration", 0) for achievement in achievements),
+            "categories_used": list(set(achievement.get("category") for achievement in achievements)),
+            "last_session": achievements[0].get("timestamp") if achievements else None
         }
+        
+        return {
+            "achievements": achievements,
+            "stats": stats
+        }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting child achievements: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch child's achievements")
+        logger.error(f"Error getting child achievements: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get child achievements"
+        )
 
 @app.get("/parent/child/{child_id}/category/{category}")
 async def get_child_category_stats(
@@ -1079,6 +1182,94 @@ async def get_child_mood_history(
     except Exception as e:
         logger.error(f"Error getting child mood history: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get child mood history")
+
+@app.get("/achievements")
+async def get_achievements(
+    token: str = Depends(oauth2_scheme),
+    auth_service: AuthService = Depends(get_auth_service),
+    achievement_service: AchievementService = Depends(get_achievement_service)
+):
+    try:
+        current_user = await auth_service.get_current_user(token)
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        user_id = str(current_user.id)
+        logger.info(f"Fetching achievements for user ID: {user_id}")
+        
+        achievements = await achievement_service.get_user_achievements(user_id)
+        logger.info(f"Retrieved {len(achievements)} achievements")
+        return achievements
+    except Exception as e:
+        logger.error(f"Error getting achievements: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get achievements")
+
+@app.get("/exercises")
+async def get_exercises(
+    token: str = Depends(oauth2_scheme),
+    auth_service: AuthService = Depends(get_auth_service),
+    exercise_service: ExerciseService = Depends(get_exercise_service)
+):
+    try:
+        current_user = await auth_service.get_current_user(token)
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        user_id = str(current_user.id)
+        logger.info(f"Fetching exercises for user ID: {user_id}")
+        
+        exercises = await exercise_service.get_user_exercises(user_id)
+        logger.info(f"Retrieved {len(exercises)} exercises")
+        return exercises
+    except Exception as e:
+        logger.error(f"Error getting exercises: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get exercises")
+
+# Add refresh token endpoint
+@app.post("/auth/refresh")
+async def refresh_token(
+    refresh_data: dict,
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    try:
+        refresh_token = refresh_data.get("refresh_token")
+        if not refresh_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Refresh token is required"
+            )
+
+        # Verify refresh token and get user
+        user = await auth_service.verify_refresh_token(refresh_token)
+        if not user:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid refresh token"
+            )
+
+        # Create new access token
+        access_token = auth_service.create_access_token(
+            data={"user_id": str(user.id)}
+        )
+
+        return {
+            "access_token": access_token,
+            "token_type": "bearer"
+        }
+    except Exception as e:
+        logger.error(f"Error refreshing token: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to refresh token"
+        )
 
 if __name__ == "__main__":
     import uvicorn

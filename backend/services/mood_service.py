@@ -73,10 +73,18 @@ class MoodService:
             ).sort("timestamp", -1)
             
             mood_history = await cursor.to_list(None)
+            
+            # Convert ObjectIds to strings
+            for entry in mood_history:
+                entry["_id"] = str(entry["_id"])
+                entry["user_id"] = str(entry["user_id"])
+                entry["timestamp"] = entry["timestamp"].isoformat()
+            
+            logger.info(f"Retrieved {len(mood_history)} mood entries for child {child_id}")
             return mood_history
             
         except Exception as e:
-            logger.error(f"Error getting child mood history: {str(e)}")
+            logger.error(f"Error getting child mood history: {str(e)}", exc_info=True)
             raise
 
     async def get_latest_mood(self, user_id: str) -> dict:
