@@ -38,20 +38,16 @@ export default function MoodScreen() {
         timestamp: new Date(),
       };
       
-      // First save the mood entry
-      const moodEntry = await ApiService.saveMoodEntry(moodData);
-      console.log('Saved mood entry:', moodEntry);
-      // Generate the mood message
-      const moodMessage = generateMoodMessage(mood, moodEntry.data.note);
+      // Save the mood entry
+      const response = await ApiService.saveMoodEntry(moodData);
       
-      console.log(moodMessage);
-      // Send the mood message to chat
-      await ApiService.sendMessage(moodMessage);
+      if (!response || !response.mood) {
+        throw new Error('Failed to save mood entry');
+      }
 
-      // Reset form
-      setSelectedMood(null);
-      setNote('');
-
+      // Generate the mood message
+      const moodMessage = `I'm feeling ${mood.toLowerCase()}${note ? ` - ${note}` : ''}`;
+      
       // Navigate to chat with the mood message
       router.push({
         pathname: '/(tabs)/',
@@ -63,7 +59,7 @@ export default function MoodScreen() {
 
     } catch (error: any) {
       console.error('Error saving mood:', error);
-      Alert.alert('Error', 'Failed to save your mood. Please try again.');
+      Alert.alert('Error', error.message || 'Failed to save your mood. Please try again.');
     } finally {
       setIsSaving(false);
     }

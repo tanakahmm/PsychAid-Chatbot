@@ -1,49 +1,63 @@
 import { Tabs } from 'expo-router';
-import { useColorScheme } from 'react-native';
-import Colors from '../../constants/Colors';
-import { Feather } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false
-      }}>
-      <Tabs.Screen
-        name="mood"
-        options={{
-          title: 'Mood',
-          tabBarIcon: ({ color }) => <TabBarIcon name="smile" color={color}  />,
-        }}
-      />
+        tabBarActiveTintColor: '#3498db',
+        tabBarInactiveTintColor: '#7f8c8d',
+        tabBarStyle: {
+          backgroundColor: '#fff',
+          borderTopWidth: 1,
+          borderTopColor: '#ecf0f1',
+        },
+        headerStyle: {
+          backgroundColor: '#fff',
+        },
+        headerTintColor: '#2c3e50',
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+        headerShown: false,
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Chat',
-          tabBarIcon: ({ color }) => <TabBarIcon name="message-circle" color={color} />,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubble-outline" size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="mood"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <TabBarIcon name="compass" color={color} />,
+          title: 'Mood',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="happy-outline" size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
-        name="progress"
+        name="exercises"
         options={{
-          title: 'Progress',
-          tabBarIcon: ({ color }) => <TabBarIcon name="trending-up" color={color} />,
+          title: 'Exercises',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="fitness-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="insights"
+        options={{
+          title: 'Insights',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="analytics-outline" size={size} color={color} />
+          ),
         }}
       />
     </Tabs>
   );
-}
-
-function TabBarIcon(props: { name: React.ComponentProps<typeof Feather>['name']; color: string }) {
-  return <Feather size={24} style={{ marginBottom: -3 }} {...props} />;
 }

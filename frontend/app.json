@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Mental Health Chatbot",
-    "slug": "mental-health-chatbot",
+    "name": "PsychAid",
+    "slug": "psychaid",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,17 +15,33 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.psychaid",
+      "buildNumber": "1.0.0"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.yourcompany.psychaid",
+      "versionCode": 1
     },
-    "scheme": "mental-health-chatbot",
+    "plugins": [
+      "expo-router"
+    ],
+    "scheme": "psychaid",
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "your-project-id"
+      }
     }
   }
 }

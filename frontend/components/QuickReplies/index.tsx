@@ -37,14 +37,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   button: {
-    backgroundColor: '#E9E9EB',
+    backgroundColor: '#FF3B3020',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 16,
     marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#FF3B3040',
   },
   buttonText: {
-    color: '#007AFF',
+    color: '#FF3B30',
     fontSize: 14,
+    fontWeight: '500',
   },
 });

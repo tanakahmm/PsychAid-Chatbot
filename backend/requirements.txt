@@ -4,7 +4,8 @@ python-dotenv
 langchain
 langchain_groq
 requests
-pydantic
+pydantic[email]
+email-validator
 google-cloud-speech
 google-cloud-texttospeech
 langchain-huggingface
@@ -13,6 +14,10 @@ sentence-transformers
 torch
 transformers
 nest-asyncio   
-openai-whisper
 ffmpeg-python
 python-multipart
+passlib[bcrypt]
+python-jose[cryptography]
+motor
+pymongo
+PyJWT

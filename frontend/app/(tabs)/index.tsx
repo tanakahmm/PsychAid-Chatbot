@@ -18,6 +18,8 @@ import * as Speech from 'expo-speech';
 import { ApiService } from '../../services/api';
 import { QuickReplies } from '../../components/QuickReplies';
 import { useLocalSearchParams } from 'expo-router';
+import { SOSButton } from '../../components/SOSButton';
+import { MoodTrackingService } from '../../services/moodTracking';
 
 interface Message {
   id: string;
@@ -128,21 +130,16 @@ export default function ChatScreen() {
     setIsLoading(true);
 
     try {
-      const isMoodMessage = text.toLowerCase().includes("i'm feeling") || 
-                          text.toLowerCase().includes("i am feeling");
-      
       let responseText: string;
       
-      if (isMoodMessage) {
-        responseText = getMoodResponse(text);
+      // Check if this is a mood-based message
+      if (fromMood === 'true' && initialMessage) {
+        const response = await ApiService.sendMessage(text);
+        responseText = response || "I'm here to help. Could you please tell me more?";
       } else {
-        try {
-          const response = await ApiService.sendMessage(text);
-          responseText = response.response || "I'm here to help. Could you please tell me more?";
-        } catch (error) {
-          console.error('API Error:', error);
-          responseText = "I'm here to help. Could you please tell me more?";
-        }
+        // Regular chat message
+        const response = await ApiService.sendMessage(text);
+        responseText = response || "I'm here to help. Could you please tell me more?";
       }
 
       const botMessage: Message = {
@@ -158,7 +155,7 @@ export default function ChatScreen() {
       console.error('Error in message handling:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: 'I understand what you\'re saying. How can I help you further?',
+        text: 'I apologize, but I encountered an error. Please try again or rephrase your message.',
         sender: 'bot',
         timestamp: new Date(),
       };
@@ -233,6 +230,11 @@ export default function ChatScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>PsychAid Chat</Text>
+        <SOSButton />
+      </View>
+      
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.container}
@@ -272,11 +274,10 @@ export default function ChatScreen() {
 
         <QuickReplies
           suggestions={[
-            "How are you feeling today?",
+            "How are you feeling?",
             "I need help with anxiety",
             "Tell me about meditation",
-            "What are some coping strategies?",
-            "Can we talk about stress?"
+            "I'm feeling stressed"
           ]}
           onSelect={handleSendMessage}
         />
@@ -318,9 +319,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E9E9EB',
+    borderBottomColor: '#eee',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
   },
   headerTitle: {
     fontSize: 20,
