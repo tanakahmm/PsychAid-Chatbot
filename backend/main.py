@@ -486,16 +486,23 @@ async def get_mood_history(
     mood_service: MoodService = Depends(get_mood_service)
 ):
     try:
-        # Get current user ID from token
-        user_id = await auth_service.get_current_user(token)
-        if not user_id:
+        # Get current user from token
+        current_user = await auth_service.get_current_user(token)
+        if not current_user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Not authenticated",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        return await mood_service.get_mood_history(user_id)
+        # Get user ID as string
+        user_id = str(current_user.id)
+        logger.info(f"Fetching mood history for user ID: {user_id}")
+        
+        # Get mood history
+        history = await mood_service.get_mood_history(user_id)
+        logger.info(f"Retrieved {len(history)} mood entries")
+        return history
     except Exception as e:
         logger.error(f"Error getting mood history: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get mood history")

@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { getEnvironment } from '../constants/Config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -10,6 +10,15 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Token management
+const setAuthToken = (token: string | null) => {
+  if (token) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  } else {
+    delete api.defaults.headers.common['Authorization'];
+  }
+};
 
 // Request interceptor
 api.interceptors.request.use(
@@ -29,14 +38,23 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor
+// Response interceptor with better error handling
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
+  async (error: AxiosError) => {
+    const originalRequest = error.config;
+    
     if (error.response?.status === 401) {
-      await AsyncStorage.removeItem('token');
-      delete api.defaults.headers.common['Authorization'];
+      // Clear token and user data
+      await AsyncStorage.multiRemove(['token', 'user', 'user_id']);
+      setAuthToken(null);
+      
+      // Create a standardized error
+      const authError = new Error('Session expired. Please login again.');
+      authError.name = 'AuthenticationError';
+      return Promise.reject(authError);
     }
+    
     return Promise.reject(error);
   }
 );
@@ -83,10 +101,11 @@ export interface User {
 }
 
 export const ApiService = {
+  setAuthToken,
+  
   // Authentication
   login: async (email: string, password: string, userType: string): Promise<AuthResponse> => {
     try {
-      // Validate required fields
       if (!email || !password || !userType) {
         throw new Error('Email, password, and user type are required');
       }
@@ -105,36 +124,32 @@ export const ApiService = {
         throw new Error('Invalid response from server');
       }
 
-      // Store authentication data
-      await AsyncStorage.setItem('token', response.data.access_token);
-      await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
-      await AsyncStorage.setItem('user_id', response.data.user.id);
-
-      // Set authorization header
-      api.defaults.headers.common['Authorization'] = `Bearer ${response.data.access_token}`;
+      const { access_token, user } = response.data;
+      
+      // Store auth data
+      await AsyncStorage.setItem('token', access_token);
+      await AsyncStorage.setItem('user', JSON.stringify(user));
+      await AsyncStorage.setItem('user_id', user.id);
+      
+      // Set token in axios
+      setAuthToken(access_token);
 
       return response.data;
     } catch (error: any) {
-      // Clear any stored data on error
-      await AsyncStorage.removeItem('token');
-      await AsyncStorage.removeItem('user');
-      await AsyncStorage.removeItem('user_id');
-      delete api.defaults.headers.common['Authorization'];
+      await AsyncStorage.multiRemove(['token', 'user', 'user_id']);
+      setAuthToken(null);
       
       if (error.response?.status === 401) {
         throw new Error('Invalid email or password');
       }
-      
-      throw new Error(error.response?.data?.detail || 'Login failed. Please check your credentials.');
+      throw new Error(error.response?.data?.detail || 'Login failed');
     }
   },
 
   logout: async () => {
     try {
-      await AsyncStorage.removeItem('token');
-      await AsyncStorage.removeItem('user');
-      await AsyncStorage.removeItem('user_id');
-      delete api.defaults.headers.common['Authorization'];
+      await AsyncStorage.multiRemove(['token', 'user', 'user_id']);
+      setAuthToken(null);
     } catch (error) {
       console.error('Logout error:', error);
     }
@@ -185,14 +200,36 @@ export const ApiService = {
 
   getMoodHistory: async () => {
     try {
+      const userId = await AsyncStorage.getItem('user_id');
+      if (!userId) {
+        console.log('No user ID found, returning empty array');
+        return [];
+      }
+
+      console.log('Fetching mood history for user:', userId);
       const response = await api.get('/mood/history');
+      console.log('API Response:', response.data);
+      
+      if (!response.data) {
+        console.log('No data in response, returning empty array');
+        return [];
+      }
+      
       return response.data;
     } catch (error: any) {
-      if (error.response?.status === 401) {
-        await AsyncStorage.removeItem('token');
-        delete api.defaults.headers.common['Authorization'];
-        throw new Error('Session expired. Please login again.');
+      console.error('Get mood history error:', {
+        status: error.response?.status,
+        message: error.response?.data?.detail || error.message,
+        data: error.response?.data
+      });
+      
+      // For 500 errors or missing user ID, return empty array to prevent UI from breaking
+      if (error.response?.status === 500 || !await AsyncStorage.getItem('user_id')) {
+        console.log('Server error or no user ID detected, returning empty array');
+        return [];
       }
+      
+      // For other errors, return empty array as fallback
       return [];
     }
   },
@@ -322,12 +359,17 @@ export const ApiService = {
 
   getCurrentUser: async (): Promise<User> => {
     try {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
       const response = await api.get('/auth/me');
       return response.data;
     } catch (error: any) {
       if (error.response?.status === 401) {
-        await AsyncStorage.removeItem('token');
-        delete api.defaults.headers.common['Authorization'];
+        await AsyncStorage.multiRemove(['token', 'user', 'user_id']);
+        setAuthToken(null);
         throw new Error('Session expired. Please login again.');
       }
       throw error;
