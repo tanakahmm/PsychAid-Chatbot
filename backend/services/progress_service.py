@@ -81,6 +81,14 @@ class ProgressService:
                     detail="Failed to save progress entry"
                 )
 
+            # Update category progress
+            await self._update_category_progress(
+                user_id_obj,
+                progress_data['category'],
+                duration,
+                progress_entry['timestamp']
+            )
+
             logger.info(f"Progress saved successfully: {result.inserted_id}")
             return {
                 "status": "success",
@@ -101,12 +109,71 @@ class ProgressService:
                 detail=f"Failed to save progress: {str(e)}"
             )
 
+    async def _update_category_progress(self, user_id: ObjectId, category: str, duration: float, timestamp: str):
+        """Update the category progress collection with the new progress entry."""
+        try:
+            logger.info(f"Updating category progress for user {user_id}, category {category}")
+            
+            # Find existing category progress
+            category_progress = await self.category_progress_collection.find_one({
+                "user_id": user_id,
+                "category": category
+            })
+
+            logger.info(f"Existing category progress found: {category_progress is not None}")
+
+            if category_progress:
+                # Update existing category progress
+                update_result = await self.category_progress_collection.update_one(
+                    {"_id": category_progress["_id"]},
+                    {
+                        "$inc": {
+                            "total_sessions": 1,
+                            "total_minutes": duration
+                        },
+                        "$set": {
+                            "last_session": timestamp
+                        }
+                    }
+                )
+                logger.info(f"Updated existing category progress. Modified count: {update_result.modified_count}")
+            else:
+                # Create new category progress
+                insert_result = await self.category_progress_collection.insert_one({
+                    "user_id": user_id,
+                    "category": category,
+                    "total_sessions": 1,
+                    "total_minutes": duration,
+                    "last_session": timestamp
+                })
+                logger.info(f"Created new category progress with ID: {insert_result.inserted_id}")
+
+            # Verify the update
+            updated_progress = await self.category_progress_collection.find_one({
+                "user_id": user_id,
+                "category": category
+            })
+            logger.info(f"Verified category progress after update: {updated_progress}")
+
+        except Exception as e:
+            logger.error(f"Error updating category progress: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to update category progress: {str(e)}"
+            )
+
     async def get_progress(self, user_id: str) -> Dict[str, Any]:
         try:
+            # Convert string user_id to ObjectId
+            user_id_obj = ObjectId(user_id)
+            logger.info(f"Getting progress for user: {user_id}")
+
             # Get all category progress for the user
             categories = await self.category_progress_collection.find({
-                "user_id": user_id
+                "user_id": user_id_obj
             }).to_list(None)
+            
+            logger.info(f"Found {len(categories)} categories for user {user_id}")
             
             # Calculate totals
             total_sessions = sum(cat.get("total_sessions", 0) for cat in categories)
@@ -120,6 +187,7 @@ class ProgressService:
                 "lastSession": cat.get("last_session")
             } for cat in categories]
             
+            logger.info(f"Progress data for user {user_id}: {total_sessions} sessions, {total_minutes} minutes")
             return {
                 "categories": formatted_categories,
                 "total_sessions": total_sessions,
@@ -260,10 +328,16 @@ class ProgressService:
     async def get_progress_by_category(self, user_id: str, category: str) -> Dict[str, Any]:
         """Get category-specific progress for a user."""
         try:
+            # Convert string user_id to ObjectId
+            user_id_obj = ObjectId(user_id)
+            logger.info(f"Getting progress for category {category} and user: {user_id}")
+            
             category_progress = await self.category_progress_collection.find_one({
-                "user_id": user_id,
+                "user_id": user_id_obj,
                 "category": category
             })
+            
+            logger.info(f"Found category progress: {category_progress}")
             
             if not category_progress:
                 return {

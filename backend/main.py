@@ -1068,18 +1068,24 @@ async def get_progress(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+        # Log the user ID we're using
+        user_id = str(current_user.id)
+        logger.info(f"Getting progress for user ID: {user_id}")
+
         # Get progress data
         if category:
-            progress_data = await progress_service.get_progress_by_category(str(current_user.id), category)
+            progress_data = await progress_service.get_progress_by_category(user_id, category)
         else:
-            progress_data = await progress_service.get_progress(str(current_user.id))
+            progress_data = await progress_service.get_progress(user_id)
 
+        # Log the response
+        logger.info(f"Progress data retrieved: {progress_data}")
         return progress_data
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting progress: {str(e)}")
+        logger.error(f"Error getting progress: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/progress/category/{category}")

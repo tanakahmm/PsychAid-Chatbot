@@ -146,10 +146,14 @@ export default function ProgressScreen() {
 
       // Load data in parallel for all categories
       const categories = ['meditation', 'anxiety-management', 'sleep-hygiene', 'stress-relief', 'self-care'];
+      console.log('Fetching progress for categories:', categories);
+      
       const [moodHistoryData, ...categoryData] = await Promise.all([
         ApiService.getMoodHistory(),
         ...categories.map(category => ApiService.getProgressByCategory(category))
       ]);
+
+      console.log('Received category data:', categoryData);
 
       // Update mood history and calculate streak
       if (Array.isArray(moodHistoryData)) {
@@ -161,13 +165,18 @@ export default function ProgressScreen() {
       }
 
       // Process category progress data
-      const formattedCategoryProgress = categories.map((category, index) => ({
-        category,
-        totalSessions: categoryData[index]?.total_sessions || 0,
-        totalMinutes: categoryData[index]?.total_minutes || 0,
-        lastSession: categoryData[index]?.last_session || null
-      }));
+      const formattedCategoryProgress = categories.map((category, index) => {
+        const progress = {
+          category,
+          totalSessions: categoryData[index]?.total_sessions || 0,
+          totalMinutes: categoryData[index]?.total_minutes || 0,
+          lastSession: categoryData[index]?.last_session || null
+        };
+        console.log(`Progress for ${category}:`, progress);
+        return progress;
+      });
 
+      console.log('Setting category progress:', formattedCategoryProgress);
       setCategoryProgress(formattedCategoryProgress);
       
       // Update total time from all categories
@@ -175,6 +184,7 @@ export default function ProgressScreen() {
         (sum, cat) => sum + (cat.totalMinutes || 0), 
         0
       );
+      console.log('Total time from all categories:', totalTimeFromCategories);
       setTotalTime(totalTimeFromCategories);
 
     } catch (error: any) {
