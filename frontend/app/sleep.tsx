@@ -78,7 +78,10 @@ export default function SleepScreen() {
         return;
       }
 
-      const completedDuration = Math.max(0, timer.duration - timer.timeLeft);
+      // Calculate completed duration in minutes
+      const completedSeconds = timer.duration - timer.timeLeft;
+      const completedDuration = Math.ceil(completedSeconds / 60);
+      console.log('Completed duration (minutes):', completedDuration);
       
       // Save progress for sleep hygiene
       await ApiService.saveProgress({

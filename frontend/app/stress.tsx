@@ -78,8 +78,9 @@ export default function StressScreen() {
         return;
       }
 
-      // Calculate duration in minutes
-      const completedDuration = Math.floor(Math.max(1, (timer.duration - timer.timeLeft) / 60));
+      // Calculate completed duration in minutes
+      const completedSeconds = timer.duration - timer.timeLeft;
+      const completedDuration = Math.ceil(completedSeconds / 60);
       console.log('Completed duration (minutes):', completedDuration);
       
       // Save progress for stress relief

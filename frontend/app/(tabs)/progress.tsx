@@ -294,11 +294,6 @@ export default function ProgressScreen() {
       <Text style={styles.sectionTitle}>Overview</Text>
       <View style={styles.quickStats}>
         <View style={styles.quickStatItem}>
-          <Ionicons name="time-outline" size={32} color="#4CAF50" />
-          <Text style={styles.quickStatValue}>{formatDuration(totalTime)}</Text>
-          <Text style={styles.quickStatLabel}>Total Time</Text>
-        </View>
-        <View style={styles.quickStatItem}>
           <Ionicons name="calendar-outline" size={32} color="#2196F3" />
           <Text style={styles.quickStatValue}>
             {categoryProgress.reduce((sum, cat) => sum + cat.totalSessions, 0)}
@@ -311,29 +306,24 @@ export default function ProgressScreen() {
           <Text style={styles.quickStatLabel}>Day Streak</Text>
         </View>
       </View>
-      </View>
-    );
+    </View>
+  );
 
   const renderChildProgress = (child: ChildProgress) => (
     <View key={child.id} style={styles.section}>
       <Text style={styles.sectionTitle}>{child.name}'s Progress</Text>
       <View style={styles.quickStats}>
         <View style={styles.quickStatItem}>
-          <Ionicons name="time-outline" size={32} color="#4CAF50" />
-          <Text style={styles.quickStatValue}>{formatDuration(child.totalTime)}</Text>
-          <Text style={styles.quickStatLabel}>Total Time</Text>
-            </View>
-        <View style={styles.quickStatItem}>
           <Ionicons name="calendar-outline" size={32} color="#2196F3" />
           <Text style={styles.quickStatValue}>{child.totalSessions}</Text>
           <Text style={styles.quickStatLabel}>Total Sessions</Text>
-            </View>
+        </View>
         <View style={styles.quickStatItem}>
           <Ionicons name="flame-outline" size={32} color="#FF9800" />
           <Text style={styles.quickStatValue}>{child.dayStreak}</Text>
           <Text style={styles.quickStatLabel}>Day Streak</Text>
         </View>
-        </View>
+      </View>
 
       {/* Child's Category Progress */}
       {child.categories && child.categories.length > 0 && (
@@ -343,7 +333,7 @@ export default function ProgressScreen() {
             <View key={index} style={styles.categoryProgressItem}>
               <View style={[styles.categoryIcon, { backgroundColor: getCategoryColor(category.category) }]}>
                 <Ionicons name={getCategoryIcon(category.category)} size={24} color="#fff" />
-                </View>
+              </View>
               <View style={styles.categoryContent}>
                 <Text style={styles.categoryTitle}>
                   {category.category.split('-').map(word => 
@@ -351,7 +341,7 @@ export default function ProgressScreen() {
                   ).join(' ')}
                 </Text>
                 <Text style={styles.categoryStats}>
-                  {category.totalSessions} {category.totalSessions === 1 ? 'session' : 'sessions'} • {formatDuration(category.totalMinutes)}
+                  {category.totalSessions} {category.totalSessions === 1 ? 'session' : 'sessions'}
                 </Text>
                 {category.lastSession && (
                   <Text style={styles.lastSession}>
@@ -359,8 +349,8 @@ export default function ProgressScreen() {
                   </Text>
                 )}
               </View>
-              </View>
-            ))}
+            </View>
+          ))}
         </View>
       )}
 
@@ -380,9 +370,9 @@ export default function ProgressScreen() {
               </View>
             </View>
           ))}
-            </View>
+        </View>
       )}
-            </View>
+    </View>
   );
 
   const renderMoodHistory = () => (
@@ -415,8 +405,8 @@ export default function ProgressScreen() {
   };
 
   const renderCategoryProgress = () => (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Category Progress</Text>
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Category Progress</Text>
       {categoryProgress.length > 0 ? (
         categoryProgress.map((category, index) => (
           <View key={index} style={styles.categoryProgressItem}>
@@ -424,14 +414,14 @@ export default function ProgressScreen() {
               <Ionicons name={getCategoryIcon(category.category)} size={24} color="#fff" />
             </View>
             <View style={styles.categoryContent}>
-                <Text style={styles.categoryTitle}>
+              <Text style={styles.categoryTitle}>
                 {category.category.split('-').map(word => 
                   word.charAt(0).toUpperCase() + word.slice(1)
                 ).join(' ')}
-                </Text>
+              </Text>
               <Text style={styles.categoryStats}>
-                {category.totalSessions} {category.totalSessions === 1 ? 'session' : 'sessions'} • {formatDuration(category.totalMinutes)}
-                </Text>
+                {category.totalSessions} {category.totalSessions === 1 ? 'session' : 'sessions'}
+              </Text>
               {category.lastSession && (
                 <Text style={styles.lastSession}>
                   Last session: {formatDate(category.lastSession)}
