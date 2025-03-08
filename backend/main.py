@@ -1091,6 +1091,7 @@ async def get_progress(
 @app.get("/progress/category/{category}")
 async def get_progress_by_category(
     category: str,
+    userId: Optional[str] = None,
     token: str = Depends(oauth2_scheme),
     auth_service: AuthService = Depends(get_auth_service),
     progress_service: ProgressService = Depends(get_progress_service)
@@ -1105,15 +1106,55 @@ async def get_progress_by_category(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # Get progress data for category
-        progress_data = await progress_service.get_progress_by_category(str(current_user.id), category)
+        # Log the request details
+        logger.info(f"Getting progress for category {category}, userId: {userId}, current_user: {current_user.id}")
+
+        # If userId is provided, verify parent access
+        target_user_id = userId
+        if userId:
+            # Get current user's data
+            user_data = await auth_service.get_user_by_id(str(current_user.id))
+            if not user_data or user_data.get("user_type") != "parent":
+                logger.error(f"User {current_user.id} is not a parent")
+                raise HTTPException(status_code=403, detail="Only parents can access child progress")
+            
+            # Convert linked_children to list of strings if they're ObjectIds
+            linked_children = [str(child_id) for child_id in user_data.get("linked_children", [])]
+            
+            # Verify child is linked to parent
+            if userId not in linked_children:
+                logger.error(f"Child {userId} not linked to parent {current_user.id}")
+                raise HTTPException(status_code=403, detail="Not authorized to access this child's progress")
+        else:
+            target_user_id = str(current_user.id)
+
+        # Get progress data
+        logger.info(f"Fetching progress data for user {target_user_id}, category {category}")
+        progress_data = await progress_service.get_progress_by_category(target_user_id, category)
+        
+        # Log the response
+        logger.info(f"Progress data retrieved: {progress_data}")
+        
+        # Return default structure if no data found
+        if not progress_data:
+            return {
+                "total_sessions": 0,
+                "total_minutes": 0,
+                "last_session": None
+            }
+            
         return progress_data
 
-    except HTTPException:
+    except HTTPException as e:
+        logger.error(f"HTTP error in get_progress_by_category: {str(e.detail)}")
         raise
     except Exception as e:
-        logger.error(f"Error getting progress by category: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting progress by category: {str(e)}", exc_info=True)
+        return {
+            "total_sessions": 0,
+            "total_minutes": 0,
+            "last_session": None
+        }
 
 @app.get("/progress/child/{child_id}")
 async def get_child_progress(

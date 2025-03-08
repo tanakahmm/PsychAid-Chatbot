@@ -632,9 +632,11 @@ export const ApiService = {
     }
   },
 
-  getProgressByCategory: async (category: string): Promise<any> => {
+  getProgressByCategory: async (category: string, userId?: string): Promise<any> => {
     try {
-      const response = await api.get(`/progress/category/${category}`);
+      const response = await api.get(`/progress/category/${category}`, {
+        params: { userId }
+      });
       if (!response.data) {
         return {
           total_sessions: 0,

@@ -328,30 +328,63 @@ class ProgressService:
     async def get_progress_by_category(self, user_id: str, category: str) -> Dict[str, Any]:
         """Get category-specific progress for a user."""
         try:
+            # Validate inputs
+            if not user_id or not category:
+                logger.error(f"Invalid input - user_id: {user_id}, category: {category}")
+                return {
+                    "total_sessions": 0,
+                    "total_minutes": 0,
+                    "last_session": None
+                }
+
             # Convert string user_id to ObjectId
-            user_id_obj = ObjectId(user_id)
+            try:
+                user_id_obj = ObjectId(user_id)
+            except Exception as e:
+                logger.error(f"Invalid user_id format: {user_id}, error: {str(e)}")
+                return {
+                    "total_sessions": 0,
+                    "total_minutes": 0,
+                    "last_session": None
+                }
+
             logger.info(f"Getting progress for category {category} and user: {user_id}")
             
-            category_progress = await self.category_progress_collection.find_one({
-                "user_id": user_id_obj,
-                "category": category
-            })
-            
-            logger.info(f"Found category progress: {category_progress}")
+            # Find category progress
+            try:
+                category_progress = await self.category_progress_collection.find_one({
+                    "user_id": user_id_obj,
+                    "category": category
+                })
+                logger.info(f"Found category progress: {category_progress}")
+            except Exception as e:
+                logger.error(f"Database error while fetching category progress: {str(e)}")
+                return {
+                    "total_sessions": 0,
+                    "total_minutes": 0,
+                    "last_session": None
+                }
             
             if not category_progress:
+                logger.info(f"No progress found for user {user_id} in category {category}")
                 return {
                     "total_sessions": 0,
                     "total_minutes": 0,
                     "last_session": None
                 }
                 
-            return {
+            result = {
                 "total_sessions": category_progress.get("total_sessions", 0),
                 "total_minutes": category_progress.get("total_minutes", 0),
                 "last_session": category_progress.get("last_session")
             }
+            logger.info(f"Returning progress data: {result}")
+            return result
             
         except Exception as e:
-            logger.error(f"Error getting progress for user {user_id} and category {category}: {str(e)}")
-            raise 
+            logger.error(f"Error getting progress for user {user_id} and category {category}: {str(e)}", exc_info=True)
+            return {
+                "total_sessions": 0,
+                "total_minutes": 0,
+                "last_session": None
+            } 

@@ -53,7 +53,6 @@ interface Achievement {
 interface ChildProgress {
   id: string;
   name: string;
-  totalTime: number;
   totalSessions: number;
   categories: CategoryProgress[];
   dayStreak: number;
@@ -119,22 +118,40 @@ export default function ProgressScreen() {
               if (children && children.length > 0) {
                 const childrenProgressData = await Promise.all(
                   children.map(async (child) => {
-                    const [childMoodHistory, childProgress] = await Promise.all([
-                      ApiService.getChildMoodHistory(child.id),
-                      ApiService.getProgress(child.id)
-                    ]);
+                    // Get child's mood history
+                    const childMoodHistory = await ApiService.getChildMoodHistory(child.id);
+                    
+                    // Get child's progress data
+                    const categories = ['meditation', 'anxiety-management', 'sleep-hygiene', 'stress-relief', 'self-care'];
+                    const categoryData = await Promise.all(
+                      categories.map(category => ApiService.getProgressByCategory(category, child.id))
+                    );
+
+                    // Format category progress
+                    const formattedCategories = categories.map((category, index) => ({
+                      category,
+                      totalSessions: categoryData[index]?.total_sessions || 0,
+                      totalMinutes: categoryData[index]?.total_minutes || 0,
+                      lastSession: categoryData[index]?.last_session || null
+                    }));
+
+                    // Calculate total sessions
+                    const totalSessions = formattedCategories.reduce(
+                      (sum, cat) => sum + cat.totalSessions,
+                      0
+                    );
 
                     return {
                       id: child.id,
                       name: child.name,
-                      totalTime: childProgress.total_minutes || 0,
-                      totalSessions: childProgress.total_sessions || 0,
-                      categories: childProgress.categories || [],
+                      totalSessions: totalSessions,
+                      categories: formattedCategories,
                       dayStreak: calculateDayStreak(childMoodHistory || []),
                       moodHistory: childMoodHistory || []
                     };
                   })
                 );
+                console.log('Children progress data:', childrenProgressData);
                 setChildrenProgress(childrenProgressData);
               }
             }
@@ -473,6 +490,25 @@ export default function ProgressScreen() {
           />
         }
       >
+        <TouchableOpacity 
+          style={styles.logoutButton}
+          onPress={async () => {
+            try {
+              await ApiService.logout();
+              await AsyncStorage.removeItem('token');
+              await AsyncStorage.removeItem('user_id');
+              await AsyncStorage.removeItem('user');
+              router.replace('/auth/login');
+            } catch (error) {
+              console.error('Logout error:', error);
+              Alert.alert('Error', 'Failed to logout. Please try again.');
+            }
+          }}
+        >
+          <Ionicons name="log-out-outline" size={24} color="#fff" />
+          <Text style={styles.logoutButtonText}>Logout</Text>
+        </TouchableOpacity>
+
         {renderQuickStats()}
         {renderCategoryProgress()}
         {renderMoodHistory()}
@@ -677,5 +713,20 @@ const styles = StyleSheet.create({
   },
   childCategoryProgress: {
     marginTop: 16,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF3B30',
+    padding: 12,
+    borderRadius: 8,
+    margin: 16,
+    justifyContent: 'center',
+  },
+  logoutButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 }); 
