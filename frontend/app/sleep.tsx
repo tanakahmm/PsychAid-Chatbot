@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ApiService } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface TimerState {
   duration: number;
@@ -32,6 +33,10 @@ export default function SleepScreen() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const startTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
     setTimer(prev => ({ ...prev, isActive: true }));
     timerRef.current = setInterval(() => {
       setTimer(prev => {
@@ -63,23 +68,63 @@ export default function SleepScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     
     try {
-      // Create a unique exercise ID for sleep hygiene
-      const exerciseId = `sleep-hygiene-${Date.now()}`;
+      const userId = await AsyncStorage.getItem('user_id');
+      if (!userId) {
+        Alert.alert(
+          "Error",
+          "Please log in to save your progress",
+          [{ text: "OK", onPress: () => setShowTimer(false) }]
+        );
+        return;
+      }
+
+      const completedDuration = Math.max(0, timer.duration - timer.timeLeft);
       
-      // Complete the exercise using the API
-      await ApiService.completeExercise(exerciseId);
+      // Save progress for sleep hygiene
+      await ApiService.saveProgress({
+        type: 'exercise',
+        category: 'sleep-hygiene',
+        duration: completedDuration,
+        timestamp: new Date().toISOString(),
+        user_id: userId
+      });
       
       Alert.alert(
         "Relaxation Complete",
-        "Great job! You've completed your bedtime relaxation exercise. This has been added to your achievements!",
-        [{ text: "OK", onPress: () => setShowTimer(false) }]
+        "Great job! Your bedtime relaxation session has been recorded.",
+        [{ text: "OK", onPress: () => {
+          setShowTimer(false);
+          // Reset timer state
+          setTimer(prev => ({
+            ...prev,
+            isActive: false,
+            timeLeft: prev.duration
+          }));
+        }}]
       );
-    } catch (error) {
-      console.error('Error completing exercise:', error);
+    } catch (error: any) {
+      console.error('Error saving progress:', error);
+      
+      // More specific error message
+      const errorMessage = error.response?.data?.detail || 
+        error.message || 
+        'Failed to save your progress. Please try again.';
+      
       Alert.alert(
         "Error",
-        "Failed to save your achievement. Please try again.",
-        [{ text: "OK" }]
+        errorMessage,
+        [{ 
+          text: "OK",
+          onPress: () => {
+            setShowTimer(false);
+            // Reset timer state even on error
+            setTimer(prev => ({
+              ...prev,
+              isActive: false,
+              timeLeft: prev.duration
+            }));
+          }
+        }]
       );
     }
   };
@@ -89,6 +134,15 @@ export default function SleepScreen() {
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // Add cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <View style={styles.container}>

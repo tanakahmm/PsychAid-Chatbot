@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { api } from '../services/api';
+import { ApiService } from '../services/api';
 import { v4 as uuidv4 } from 'uuid';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Exercise {
   id: string;
@@ -11,6 +12,7 @@ interface Exercise {
   steps: string[];
   duration: number;
   difficulty: string;
+  category: string;
 }
 
 interface TherapeuticExerciseProps {
@@ -39,39 +41,52 @@ export const TherapeuticExercise: React.FC<TherapeuticExerciseProps> = ({ exerci
 
   const handleExerciseComplete = async () => {
     try {
-      // Create a unique exercise ID
-      const exerciseId = uuidv4();
-      
-      // Create the exercise first
-      const exerciseData = {
-        _id: exerciseId,
-        name: exercise.name,
-        category: exercise.category,
-        duration: exercise.duration,
-        completed: true,
-        timestamp: new Date().toISOString()
+      // Get user ID from storage
+      const userId = await AsyncStorage.getItem('user_id');
+      console.log('Retrieved user ID:', userId);
+
+      if (!userId) {
+        console.error('No user ID found in storage');
+        Alert.alert('Error', 'Please log in to save your progress');
+        return;
+      }
+
+      // Calculate completed duration
+      const completedDuration = Math.floor(Math.max(0, exercise.duration - timeLeft / 60));
+      console.log('Calculated duration:', completedDuration);
+
+      // Create progress data object
+      const progressData = {
+        type: 'exercise',
+        category: exercise.category || 'general',
+        duration: completedDuration,
+        timestamp: new Date().toISOString(),
+        exercise_id: exercise.id,
+        user_id: userId
       };
 
-      // Create the exercise
-      await api.post('/exercises', exerciseData);
+      // Debug log
+      console.log('Exercise data:', exercise);
+      console.log('Progress data to be sent:', progressData);
 
-      // Now mark it as complete
-      const response = await api.post(`/exercises/${exerciseId}/complete`);
-      
-      if (response.data) {
-        Alert.alert(
-          "Exercise Complete",
-          "Great job! You've completed the exercise. This has been added to your achievements!",
-          [{ text: "OK", onPress: () => {
-            if (onComplete) onComplete();
-          }}]
-        );
-      }
+      // Save progress using ApiService
+      const result = await ApiService.saveProgress(progressData);
+
+      console.log('Progress saved successfully:', result);
+
+      Alert.alert(
+        "Exercise Complete",
+        "Great job! Your progress has been updated.",
+        [{ text: "OK", onPress: () => {
+          if (onComplete) onComplete();
+        }}]
+      );
+
     } catch (error: any) {
       console.error('Error completing exercise:', error);
       Alert.alert(
         "Error",
-        error.response?.data?.detail || "Failed to complete exercise. Please try again.",
+        "Failed to save progress. Please try again.",
         [{ text: "OK" }]
       );
     }

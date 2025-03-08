@@ -543,26 +543,62 @@ export const ApiService = {
   },
 
   // Progress tracking endpoints
-  saveProgress: async (type: string, category: string, duration: number, moodBefore: number, moodAfter: number, engagementLevel: number, notes: string = ''): Promise<any> => {
+  saveProgress: async (progressData: {
+    type: string;
+    category: string;
+    duration: number;
+    timestamp: string;
+    exercise_id?: string;
+    user_id: string;
+  }) => {
     try {
-      const response = await api.post('/progress', {
-        type,
-        category,
-        duration,
-        mood_before: moodBefore,
-        mood_after: moodAfter,
-        engagement_level: engagementLevel,
-        notes,
-        timestamp: new Date().toISOString()
-      });
+      // Debug log
+      console.log('saveProgress received:', progressData);
+
+      // Validate input
+      if (!progressData || typeof progressData !== 'object') {
+        console.error('Invalid progress data:', progressData);
+        throw new Error('Progress data must be an object');
+      }
+
+      // Create a clean data object with explicit type conversions
+      const cleanData = {
+        type: String(progressData.type || ''),
+        category: String(progressData.category || ''),
+        duration: Number(progressData.duration || 0),
+        timestamp: String(progressData.timestamp || new Date().toISOString()),
+        user_id: String(progressData.user_id || ''),
+        ...(progressData.exercise_id ? { exercise_id: String(progressData.exercise_id) } : {})
+      };
+
+      // Validate required fields
+      if (!cleanData.user_id || !cleanData.type || !cleanData.category) {
+        console.error('Missing required fields:', {
+          user_id: cleanData.user_id,
+          type: cleanData.type,
+          category: cleanData.category
+        });
+        throw new Error('Missing required fields');
+      }
+
+      // Debug log
+      console.log('Sending progress data to server:', cleanData);
+
+      // Make the API call
+      const response = await api.post('/progress', cleanData);
+
+      // Debug log
+      console.log('Server response:', response.data);
+
       return response.data;
     } catch (error: any) {
-      if (error.response?.status === 401) {
-        await AsyncStorage.removeItem('token');
-        delete api.defaults.headers.common['Authorization'];
-        throw new Error('Session expired. Please login again.');
-      }
-      throw new Error(error.response?.data?.detail || 'Failed to save progress');
+      console.error('Error saving progress:', {
+        message: error.response?.data?.detail || error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        originalError: error
+      });
+      throw error;
     }
   },
 

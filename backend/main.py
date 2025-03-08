@@ -1030,18 +1030,25 @@ async def save_progress(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+        # Log the incoming data
+        logger.info(f"Saving progress for user {current_user.id}: {progress_data}")
+
         # Validate required fields
         if not progress_data.get("type"):
             raise HTTPException(status_code=400, detail="Progress type is required")
 
         # Save progress entry
-        saved_entry = await progress_service.save_progress(str(current_user.id), progress_data)
+        saved_entry = await progress_service.save_progress(progress_data)
+        
+        # Log success
+        logger.info(f"Progress saved successfully: {saved_entry}")
         return saved_entry
 
-    except HTTPException:
-        raise
+    except HTTPException as e:
+        logger.error(f"HTTP error in save_progress: {str(e.detail)}")
+        raise e
     except Exception as e:
-        logger.error(f"Error saving progress: {str(e)}")
+        logger.error(f"Error saving progress: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/progress")
@@ -1293,42 +1300,6 @@ async def refresh_token(
             detail="Failed to refresh token"
         )
 
-@app.post("/exercises/{exercise_id}/complete")
-async def complete_exercise(
-    exercise_id: str,
-    token: str = Depends(oauth2_scheme),
-    auth_service: AuthService = Depends(get_auth_service),
-    exercise_service: ExerciseService = Depends(get_exercise_service)
-):
-    """Complete an exercise and create achievements."""
-    try:
-        # Get current user from token
-        current_user = await auth_service.get_current_user(token)
-        if not current_user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Not authenticated",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        # Complete exercise and get achievements
-        exercise, achievements = await exercise_service.complete_exercise(
-            str(current_user.id),
-            exercise_id
-        )
-
-        return {
-            "exercise": exercise,
-            "achievements": achievements
-        }
-
-    except Exception as e:
-        logger.error(f"Error completing exercise: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to complete exercise: {str(e)}"
-        )
-
 @app.post("/exercises")
 async def create_exercise(
     exercise_data: dict,
@@ -1336,7 +1307,7 @@ async def create_exercise(
     auth_service: AuthService = Depends(get_auth_service),
     exercise_service: ExerciseService = Depends(get_exercise_service)
 ):
-    """Create a new exercise."""
+    """Create a new exercise and mark it as completed."""
     try:
         # Get current user from token
         current_user = await auth_service.get_current_user(token)
@@ -1347,7 +1318,10 @@ async def create_exercise(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # Create exercise
+        # Set user_id in exercise data
+        exercise_data["user_id"] = str(current_user.id)
+
+        # Create and complete exercise
         exercise, achievements = await exercise_service.create_exercise(
             str(current_user.id),
             exercise_data
@@ -1355,7 +1329,8 @@ async def create_exercise(
 
         return {
             "exercise": exercise,
-            "achievements": achievements
+            "achievements": achievements,
+            "message": "Exercise completed successfully"
         }
 
     except Exception as e:

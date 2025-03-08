@@ -3,6 +3,7 @@ from datetime import datetime
 from database import get_database
 from .achievement_service import AchievementService
 import logging
+from bson import ObjectId
 
 logger = logging.getLogger(__name__)
 
@@ -25,50 +26,70 @@ class ExerciseService:
 
     async def create_exercise(self, user_id: str, exercise_data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         try:
+            # Use provided ID if it exists, otherwise generate a new one
+            exercise_id = exercise_data.get("_id") or str(ObjectId())
+            
+            # Create the exercise document
             exercise = {
-                "_id": exercise_data["_id"],  # Use the provided ID
+                "_id": exercise_id,
                 "user_id": user_id,
                 "name": exercise_data["name"],
-                "category": exercise_data["category"],
+                "category": exercise_data.get("category", "meditation"),
                 "duration": exercise_data.get("duration", 0),
-                "completed": exercise_data.get("completed", False),
-                "timestamp": datetime.utcnow().isoformat()
+                "completed": exercise_data.get("completed", True),
+                "timestamp": exercise_data.get("timestamp", datetime.utcnow().isoformat()),
+                "description": exercise_data.get("description", ""),
+                "difficulty": exercise_data.get("difficulty", "beginner"),
+                "steps": exercise_data.get("steps", [])
             }
             
-            await self.exercises_collection.insert_one(exercise)
+            # Check if exercise already exists
+            existing_exercise = await self.exercises_collection.find_one({"_id": exercise_id})
+            if existing_exercise:
+                # Update existing exercise
+                await self.exercises_collection.update_one(
+                    {"_id": exercise_id},
+                    {"$set": exercise}
+                )
+                logger.info(f"Updated exercise {exercise_id} for user {user_id}")
+            else:
+                # Insert new exercise
+                await self.exercises_collection.insert_one(exercise)
+                logger.info(f"Created exercise {exercise_id} for user {user_id}")
             
             # Check for achievements if exercise is completed
             achievements = []
-            if exercise.get("completed"):
-                achievements = await self.achievement_service.check_and_create_achievements(
-                    user_id,
-                    exercise
-                )
+            if exercise["completed"]:
+                try:
+                    achievements = await self.achievement_service.check_and_create_achievements(
+                        user_id,
+                        exercise
+                    )
+                    logger.info(f"Created {len(achievements)} achievements for exercise {exercise_id}")
+                except Exception as e:
+                    logger.error(f"Error creating achievements: {str(e)}")
             
             return exercise, achievements
         except Exception as e:
             logger.error(f"Error creating exercise for user {user_id}: {str(e)}")
             raise
 
-    async def complete_exercise(self, user_id: str, exercise_id: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    async def get_exercise(self, exercise_id: str) -> Dict[str, Any]:
         try:
-            # Update exercise
+            exercise = await self.exercises_collection.find_one({"_id": exercise_id})
+            return exercise
+        except Exception as e:
+            logger.error(f"Error getting exercise {exercise_id}: {str(e)}")
+            return None
+
+    async def update_exercise(self, exercise_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
+        try:
             result = await self.exercises_collection.find_one_and_update(
-                {"_id": exercise_id, "user_id": user_id},
-                {"$set": {"completed": True}},
+                {"_id": exercise_id},
+                {"$set": update_data},
                 return_document=True
             )
-            
-            if not result:
-                raise Exception("Exercise not found or not owned by user")
-            
-            # Check for achievements
-            achievements = await self.achievement_service.check_and_create_achievements(
-                user_id,
-                result
-            )
-            
-            return result, achievements
+            return result
         except Exception as e:
-            logger.error(f"Error completing exercise {exercise_id} for user {user_id}: {str(e)}")
+            logger.error(f"Error updating exercise {exercise_id}: {str(e)}")
             raise 

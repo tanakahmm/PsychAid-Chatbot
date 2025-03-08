@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ApiService } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface TimerState {
   duration: number;
@@ -25,13 +26,17 @@ interface TimerState {
 export default function SelfCareScreen() {
   const [showTimer, setShowTimer] = useState(false);
   const [timer, setTimer] = useState<TimerState>({
-    duration: 900, // 15 minutes default
+    duration: 10, // 15 minutes default
     isActive: false,
-    timeLeft: 900,
+    timeLeft: 10,
   });
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const startTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
     setTimer(prev => ({ ...prev, isActive: true }));
     timerRef.current = setInterval(() => {
       setTimer(prev => {
@@ -63,23 +68,56 @@ export default function SelfCareScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     
     try {
-      // Create a unique exercise ID for self-care
-      const exerciseId = `self-care-${Date.now()}`;
+      const userId = await AsyncStorage.getItem('user_id');
+      if (!userId) {
+        Alert.alert(
+          "Error",
+          "Please log in to save your progress",
+          [{ text: "OK", onPress: () => setShowTimer(false) }]
+        );
+        return;
+      }
+
+      // Calculate duration in minutes
+      const completedDuration = Math.floor(Math.max(1, (timer.duration - timer.timeLeft) / 60));
+      console.log('Completed duration (minutes):', completedDuration);
       
-      // Complete the exercise using the API
-      await ApiService.completeExercise(exerciseId);
+      // Save progress for self-care
+      await ApiService.saveProgress({
+        type: 'exercise',
+        category: 'self-care',
+        duration: completedDuration,
+        timestamp: new Date().toISOString(),
+        user_id: userId
+      });
       
       Alert.alert(
         "Self-Care Time Complete",
-        "Great job taking time for yourself! This has been added to your achievements!",
-        [{ text: "OK", onPress: () => setShowTimer(false) }]
+        "Great job taking time for yourself! Your session has been recorded.",
+        [{ text: "OK", onPress: () => {
+          setShowTimer(false);
+          // Reset timer state
+          setTimer(prev => ({
+            ...prev,
+            isActive: false,
+            timeLeft: prev.duration
+          }));
+        }}]
       );
-    } catch (error) {
-      console.error('Error completing exercise:', error);
+    } catch (error: any) {
+      console.error('Error saving progress:', error);
       Alert.alert(
         "Error",
-        "Failed to save your achievement. Please try again.",
-        [{ text: "OK" }]
+        "Failed to save your progress. Please try again.",
+        [{ text: "OK", onPress: () => {
+          setShowTimer(false);
+          // Reset timer state even on error
+          setTimer(prev => ({
+            ...prev,
+            isActive: false,
+            timeLeft: prev.duration
+          }));
+        }}]
       );
     }
   };
@@ -89,6 +127,15 @@ export default function SelfCareScreen() {
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // Add cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <View style={styles.container}>

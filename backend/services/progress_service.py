@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from fastapi import HTTPException
 from bson import ObjectId
 from database import get_database
@@ -12,105 +12,122 @@ logger = logging.getLogger(__name__)
 class ProgressService:
     def __init__(self):
         self.db = get_database()
+        self.progress_collection = self.db.progress
+        self.category_progress_collection = self.db.category_progress
         logger.info("ProgressService initialized")
 
-    async def save_progress(self, user_id: str, progress_data: dict) -> dict:
-        """Save progress data for therapy activities."""
+    async def save_progress(self, progress_data: dict) -> dict:
+        """
+        Save user progress for exercises, meditation, or mindfulness activities.
+        """
         try:
-            # Create progress document with enhanced mental health metrics
-            progress_doc = {
-                "user_id": ObjectId(user_id),
-                "type": progress_data["type"],
-                "category": progress_data.get("category", "general"),
-                "duration": progress_data.get("duration", 0),
-                "mood_before": progress_data.get("mood_before"),
-                "mood_after": progress_data.get("mood_after"),
-                "engagement_level": progress_data.get("engagement_level", 0),  # 1-5 scale
-                "notes": progress_data.get("notes", ""),
-                "timestamp": datetime.utcnow()
+            # Validate required fields
+            required_fields = ['user_id', 'type', 'category', 'duration']
+            missing_fields = [field for field in required_fields if field not in progress_data]
+            if missing_fields:
+                logger.error(f"Missing required fields: {missing_fields}")
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Missing required fields: {', '.join(missing_fields)}"
+                )
+
+            # Convert user_id to ObjectId
+            try:
+                user_id_obj = ObjectId(progress_data['user_id'])
+            except Exception as e:
+                logger.error(f"Invalid user_id format: {progress_data['user_id']}")
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid user_id format: {str(e)}"
+                )
+
+            # Validate type
+            valid_types = ['exercise', 'meditation', 'mindfulness']
+            if progress_data['type'] not in valid_types:
+                logger.error(f"Invalid type: {progress_data['type']}")
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid type. Must be one of: {', '.join(valid_types)}"
+                )
+
+            # Ensure duration is non-negative
+            try:
+                duration = max(0, float(progress_data.get('duration', 0)))
+            except (ValueError, TypeError):
+                logger.error(f"Invalid duration value: {progress_data.get('duration')}")
+                raise HTTPException(
+                    status_code=422,
+                    detail="Invalid duration value"
+                )
+
+            # Prepare progress entry
+            progress_entry = {
+                'user_id': user_id_obj,
+                'type': progress_data['type'],
+                'category': progress_data['category'],
+                'duration': duration,
+                'timestamp': progress_data.get('timestamp', datetime.now().isoformat()),
             }
-            
-            # Insert into database
-            result = await self.db.progress.insert_one(progress_doc)
-            
-            # Convert ObjectId to string for response
-            response_doc = {
-                "_id": str(result.inserted_id),
-                "user_id": str(user_id),
-                **progress_doc,
-                "timestamp": progress_doc["timestamp"].isoformat()
-            }
-            
-            logger.info(f"Saved progress for user {user_id}")
-            return response_doc
-            
-        except Exception as e:
-            logger.error(f"Error saving progress: {str(e)}")
-            raise
 
-    async def get_progress(self, user_id: str, category: Optional[str] = None) -> dict:
-        """Get comprehensive progress statistics for a user."""
-        try:
-            query = {"user_id": ObjectId(user_id)}
-            if category:
-                query["category"] = category
+            if 'exercise_id' in progress_data:
+                progress_entry['exercise_id'] = progress_data['exercise_id']
 
-            # Get all progress entries
-            cursor = self.db.progress.find(query)
-            entries = await cursor.to_list(None)
+            # Insert progress entry
+            result = await self.progress_collection.insert_one(progress_entry)
+            if not result.inserted_id:
+                logger.error("Failed to insert progress entry")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to save progress entry"
+                )
 
-            # Calculate basic statistics
-            total_sessions = len(entries)
-            total_minutes = sum(entry.get("duration", 0) for entry in entries)
-            categories_used = len(set(entry.get("category", "general") for entry in entries))
-            
-            # Calculate mood improvement statistics
-            mood_improvements = []
-            for entry in entries:
-                if entry.get("mood_before") and entry.get("mood_after"):
-                    mood_improvements.append(entry["mood_after"] - entry["mood_before"])
-            
-            avg_mood_improvement = sum(mood_improvements) / len(mood_improvements) if mood_improvements else 0
-            
-            # Calculate engagement statistics
-            avg_engagement = sum(entry.get("engagement_level", 0) for entry in entries) / total_sessions if total_sessions > 0 else 0
-            
-            # Get latest session
-            latest_session = None
-            if entries:
-                latest_entry = max(entries, key=lambda x: x.get("timestamp", datetime.min))
-                latest_session = {
-                    "type": latest_entry.get("type"),
-                    "category": latest_entry.get("category"),
-                    "duration": latest_entry.get("duration"),
-                    "mood_before": latest_entry.get("mood_before"),
-                    "mood_after": latest_entry.get("mood_after"),
-                    "engagement_level": latest_entry.get("engagement_level"),
-                    "notes": latest_entry.get("notes"),
-                    "timestamp": latest_entry.get("timestamp").isoformat()
-                }
-
-            # Get weekly progress
-            weekly_progress = await self._get_weekly_progress(entries)
-
+            logger.info(f"Progress saved successfully: {result.inserted_id}")
             return {
-                "total_sessions": total_sessions,
-                "total_minutes": total_minutes,
-                "categories_used": categories_used,
-                "latest_session": latest_session,
-                "mood_improvement": {
-                    "average": avg_mood_improvement,
-                    "total_improvements": len(mood_improvements)
-                },
-                "engagement": {
-                    "average": avg_engagement,
-                    "total_sessions": total_sessions
-                },
-                "weekly_progress": weekly_progress
+                "status": "success",
+                "message": "Progress saved successfully",
+                "progress_id": str(result.inserted_id),
+                "type": progress_entry['type'],
+                "category": progress_entry['category'],
+                "duration": progress_entry['duration']
             }
 
+        except HTTPException as e:
+            logger.error(f"HTTP error in save_progress: {str(e)}")
+            raise e
         except Exception as e:
-            logger.error(f"Error getting progress: {str(e)}")
+            logger.error(f"Error in save_progress: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to save progress: {str(e)}"
+            )
+
+    async def get_progress(self, user_id: str) -> Dict[str, Any]:
+        try:
+            # Get all category progress for the user
+            categories = await self.category_progress_collection.find({
+                "user_id": user_id
+            }).to_list(None)
+            
+            # Calculate totals
+            total_sessions = sum(cat.get("total_sessions", 0) for cat in categories)
+            total_minutes = sum(cat.get("total_minutes", 0) for cat in categories)
+            
+            # Format categories for frontend
+            formatted_categories = [{
+                "category": cat["category"],
+                "totalSessions": cat.get("total_sessions", 0),
+                "totalMinutes": cat.get("total_minutes", 0),
+                "lastSession": cat.get("last_session")
+            } for cat in categories]
+            
+            return {
+                "categories": formatted_categories,
+                "total_sessions": total_sessions,
+                "total_minutes": total_minutes
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting overall progress for user {user_id}: {str(e)}")
             raise
 
     async def _get_weekly_progress(self, entries: List[dict]) -> List[dict]:
@@ -240,37 +257,27 @@ class ProgressService:
             logger.error(f"Error getting child mood history: {str(e)}")
             raise
 
-    async def get_progress_by_category(self, user_id: str, category: str) -> Dict:
+    async def get_progress_by_category(self, user_id: str, category: str) -> Dict[str, Any]:
         """Get category-specific progress for a user."""
         try:
-            entries = await self.db.progress.find({
-                "user_id": ObjectId(user_id),
+            category_progress = await self.category_progress_collection.find_one({
+                "user_id": user_id,
                 "category": category
-            }).to_list(None)
-
-            if not entries:
+            })
+            
+            if not category_progress:
                 return {
                     "total_sessions": 0,
                     "total_minutes": 0,
                     "last_session": None
                 }
-
-            total_sessions = len(entries)
-            total_minutes = sum(entry.get("duration", 0) for entry in entries)
-            last_session = max(
-                (entry.get("timestamp") for entry in entries),
-                default=None
-            )
-
-            # Convert datetime to ISO format string if it exists
-            if last_session:
-                last_session = last_session.isoformat()
-
+                
             return {
-                "total_sessions": total_sessions,
-                "total_minutes": total_minutes,
-                "last_session": last_session
+                "total_sessions": category_progress.get("total_sessions", 0),
+                "total_minutes": category_progress.get("total_minutes", 0),
+                "last_session": category_progress.get("last_session")
             }
+            
         except Exception as e:
-            logger.error(f"Error getting progress by category: {str(e)}")
+            logger.error(f"Error getting progress for user {user_id} and category {category}: {str(e)}")
             raise 
