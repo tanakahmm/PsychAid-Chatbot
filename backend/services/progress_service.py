@@ -122,29 +122,41 @@ class ProgressService:
 
             logger.info(f"Existing category progress found: {category_progress is not None}")
 
+            # Get all progress entries for this user and category
+            progress_entries = await self.progress_collection.find({
+                "user_id": user_id,
+                "category": category
+            }).to_list(None)
+
+            # Calculate accurate totals from progress entries
+            total_sessions = len(progress_entries)
+            total_minutes = sum(entry.get("duration", 0) for entry in progress_entries)
+            last_session = max(
+                (entry.get("timestamp") for entry in progress_entries),
+                default=timestamp
+            )
+
             if category_progress:
-                # Update existing category progress
+                # Update existing category progress with accurate totals
                 update_result = await self.category_progress_collection.update_one(
                     {"_id": category_progress["_id"]},
                     {
-                        "$inc": {
-                            "total_sessions": 1,
-                            "total_minutes": duration
-                        },
                         "$set": {
-                            "last_session": timestamp
+                            "total_sessions": total_sessions,
+                            "total_minutes": total_minutes,
+                            "last_session": last_session
                         }
                     }
                 )
                 logger.info(f"Updated existing category progress. Modified count: {update_result.modified_count}")
             else:
-                # Create new category progress
+                # Create new category progress with accurate totals
                 insert_result = await self.category_progress_collection.insert_one({
                     "user_id": user_id,
                     "category": category,
-                    "total_sessions": 1,
-                    "total_minutes": duration,
-                    "last_session": timestamp
+                    "total_sessions": total_sessions,
+                    "total_minutes": total_minutes,
+                    "last_session": last_session
                 })
                 logger.info(f"Created new category progress with ID: {insert_result.inserted_id}")
 
@@ -350,35 +362,43 @@ class ProgressService:
 
             logger.info(f"Getting progress for category {category} and user: {user_id}")
             
-            # Find category progress
-            try:
-                category_progress = await self.category_progress_collection.find_one({
-                    "user_id": user_id_obj,
-                    "category": category
-                })
-                logger.info(f"Found category progress: {category_progress}")
-            except Exception as e:
-                logger.error(f"Database error while fetching category progress: {str(e)}")
+            # Find all progress entries for this user and category
+            progress_entries = await self.progress_collection.find({
+                "user_id": user_id_obj,
+                "category": category
+            }).to_list(None)
+
+            if not progress_entries:
+                logger.info(f"No progress entries found for user {user_id} in category {category}")
                 return {
                     "total_sessions": 0,
                     "total_minutes": 0,
                     "last_session": None
                 }
-            
-            if not category_progress:
-                logger.info(f"No progress found for user {user_id} in category {category}")
-                return {
-                    "total_sessions": 0,
-                    "total_minutes": 0,
-                    "last_session": None
-                }
-                
+
+            # Calculate totals
+            total_sessions = len(progress_entries)
+            total_minutes = sum(entry.get("duration", 0) for entry in progress_entries)
+            last_session = max(
+                (entry.get("timestamp") for entry in progress_entries),
+                default=None
+            )
+
+            # Update category progress
+            await self._update_category_progress(
+                user_id_obj,
+                category,
+                total_minutes,
+                last_session
+            )
+
             result = {
-                "total_sessions": category_progress.get("total_sessions", 0),
-                "total_minutes": category_progress.get("total_minutes", 0),
-                "last_session": category_progress.get("last_session")
+                "total_sessions": total_sessions,
+                "total_minutes": total_minutes,
+                "last_session": last_session
             }
-            logger.info(f"Returning progress data: {result}")
+            
+            logger.info(f"Progress data for user {user_id} in category {category}: {result}")
             return result
             
         except Exception as e:

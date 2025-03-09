@@ -10,6 +10,8 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  ViewStyle,
+  TextStyle,
 } from 'react-native';
 import { ApiService } from '../services/api';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +22,36 @@ interface Message {
   text: string;
   isUser: boolean;
   timestamp: Date;
+}
+
+interface Styles {
+  container: ViewStyle;
+  titleContainer: ViewStyle;
+  titleWrapper: ViewStyle;
+  title: TextStyle;
+  subtitleContainer: ViewStyle;
+  subtitle: TextStyle;
+  backButton: ViewStyle;
+  loginButton: ViewStyle;
+  loginButtonText: TextStyle;
+  loginIcon: ViewStyle;
+  messagesList: ViewStyle;
+  messageContainer: ViewStyle;
+  userMessage: ViewStyle;
+  botMessage: ViewStyle;
+  messageBubble: ViewStyle;
+  userBubble: ViewStyle;
+  botBubble: ViewStyle;
+  messageText: TextStyle;
+  userMessageText: TextStyle;
+  botMessageText: TextStyle;
+  timestamp: TextStyle;
+  userTimestamp: TextStyle;
+  botTimestamp: TextStyle;
+  inputContainer: ViewStyle;
+  input: ViewStyle & TextStyle;
+  sendButton: ViewStyle;
+  sendButtonDisabled: ViewStyle;
 }
 
 export default function PublicChatScreen() {
@@ -69,8 +101,16 @@ export default function PublicChatScreen() {
         styles.messageBubble,
         item.isUser ? styles.userBubble : styles.botBubble
       ]}>
-        <Text style={styles.messageText}>{item.text}</Text>
-        <Text style={styles.timestamp}>
+        <Text style={[
+          styles.messageText,
+          item.isUser ? styles.userMessageText : styles.botMessageText
+        ]}>
+          {item.text}
+        </Text>
+        <Text style={[
+          styles.timestamp,
+          item.isUser ? styles.userTimestamp : styles.botTimestamp
+        ]}>
           {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
       </View>
@@ -82,20 +122,27 @@ export default function PublicChatScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#2c3e50" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Public Chat</Text>
+      <View style={styles.titleContainer}>
+        <View style={styles.titleWrapper}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={24} color="#2c3e50" />
+          </TouchableOpacity>
+          <Text style={styles.title}>Mental Health Chat</Text>
+        </View>
         <TouchableOpacity
           style={styles.loginButton}
           onPress={() => router.push('/auth/login')}
         >
           <Text style={styles.loginButtonText}>Login</Text>
+          <Ionicons name="log-in-outline" size={20} color="#3498db" style={styles.loginIcon} />
         </TouchableOpacity>
+      </View>
+
+      <View style={styles.subtitleContainer}>
+        <Text style={styles.subtitle}>Chat with our AI assistant about mental health</Text>
       </View>
 
       <FlatList
@@ -133,42 +180,67 @@ export default function PublicChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create<Styles>({
   container: {
     flex: 1,
     backgroundColor: '#f5f6fa',
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
-  header: {
+  titleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  titleWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#ecf0f1',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#2c3e50',
+    marginLeft: 12,
+  },
+  subtitleContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    marginLeft: 44, // Align with title text
   },
   backButton: {
     padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2c3e50',
+    borderRadius: 20,
+    backgroundColor: '#f8f9fa',
   },
   loginButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: '#f8f9fa',
   },
   loginButtonText: {
-    color: '#3498db',
     fontSize: 16,
     fontWeight: '600',
+    color: '#3498db',
+    marginRight: 4,
+  },
+  loginIcon: {
+    marginLeft: 2,
   },
   messagesList: {
     padding: 16,
+    paddingBottom: 8,
   },
   messageContainer: {
     marginBottom: 16,
-    maxWidth: '80%',
+    maxWidth: '85%',
   },
   userMessage: {
     alignSelf: 'flex-end',
@@ -178,7 +250,12 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     padding: 12,
-    borderRadius: 16,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   userBubble: {
     backgroundColor: '#3498db',
@@ -190,38 +267,62 @@ const styles = StyleSheet.create({
   },
   messageText: {
     fontSize: 16,
+    lineHeight: 22,
+  },
+  userMessageText: {
+    color: '#fff',
+  },
+  botMessageText: {
     color: '#2c3e50',
   },
   timestamp: {
-    fontSize: 12,
-    color: '#7f8c8d',
+    fontSize: 11,
     marginTop: 4,
     alignSelf: 'flex-end',
+  },
+  userTimestamp: {
+    color: 'rgba(255,255,255,0.8)',
+  },
+  botTimestamp: {
+    color: '#7f8c8d',
   },
   inputContainer: {
     flexDirection: 'row',
     padding: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#ecf0f1',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 3,
   },
   input: {
     flex: 1,
     backgroundColor: '#f5f6fa',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 8,
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginRight: 12,
     fontSize: 16,
     maxHeight: 100,
+    color: '#2c3e50',
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#3498db',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   sendButtonDisabled: {
     backgroundColor: '#bdc3c7',

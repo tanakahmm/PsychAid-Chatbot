@@ -96,83 +96,93 @@ export default function ProgressScreen() {
         setIsLoading(true);
       }
       setError(null);
-      
-      const token = await AsyncStorage.getItem('token');
-      const userId = await AsyncStorage.getItem('user_id');
+
       const userJson = await AsyncStorage.getItem('user');
-      
-      if (!token || !userId) {
-        setError('Please log in to view your progress');
-        return;
-      }
+      const currentUser = userJson ? JSON.parse(userJson) : null;
 
-      // Load user type and check if parent
-      if (userJson) {
-        try {
-          const currentUser = JSON.parse(userJson);
-          if (currentUser && 'user_type' in currentUser) {
-            setIsParent(currentUser.user_type === 'parent');
-            if (currentUser.user_type === 'parent') {
-              // Fetch linked children data
-              const children = await ApiService.getLinkedChildren();
-              if (children && children.length > 0) {
-                const childrenProgressData = await Promise.all(
-                  children.map(async (child) => {
-                    // Get child's mood history
-                    const childMoodHistory = await ApiService.getChildMoodHistory(child.id);
-                    
-                    // Get child's progress data
-                    const categories = ['meditation', 'anxiety-management', 'sleep-hygiene', 'stress-relief', 'self-care'];
-                    const categoryData = await Promise.all(
-                      categories.map(category => ApiService.getProgressByCategory(category, child.id))
-                    );
+      // Set parent status
+      setIsParent(currentUser?.user_type === 'parent');
 
-                    // Format category progress
-                    const formattedCategories = categories.map((category, index) => ({
-                      category,
-                      totalSessions: categoryData[index]?.total_sessions || 0,
-                      totalMinutes: categoryData[index]?.total_minutes || 0,
-                      lastSession: categoryData[index]?.last_session || null
-                    }));
+      if (currentUser?.user_type === 'parent') {
+        console.log('[Progress] Loading parent view...');
+        // Fetch linked children data
+        const children = await ApiService.getLinkedChildren();
+        console.log('[Progress] Found children:', children);
 
-                    // Calculate total sessions
-                    const totalSessions = formattedCategories.reduce(
-                      (sum, cat) => sum + cat.totalSessions,
-                      0
-                    );
-
+        if (children && children.length > 0) {
+          const childrenProgressData = await Promise.all(
+            children.map(async (child) => {
+              console.log(`[Progress] Fetching data for child: ${child.name} (${child.id})`);
+              
+              // Get child's mood history
+              const childMoodHistory = await ApiService.getChildMoodHistory(child.id);
+              console.log(`[Progress] Child mood history:`, childMoodHistory);
+              
+              // Get child's progress data for all categories
+              const categories = ['meditation', 'anxiety-management', 'sleep-hygiene', 'stress-relief', 'self-care'];
+              const categoryData = await Promise.all(
+                categories.map(async (category) => {
+                  try {
+                    // Use the direct child progress endpoint
+                    const response = await ApiService.getProgressByCategory(category, child.id);
+                    console.log(`[Progress] Child ${child.name} ${category} data:`, response);
                     return {
-                      id: child.id,
-                      name: child.name,
-                      totalSessions: totalSessions,
-                      categories: formattedCategories,
-                      dayStreak: calculateDayStreak(childMoodHistory || []),
-                      moodHistory: childMoodHistory || []
+                      category,
+                      totalSessions: Number(response?.total_sessions || 0),
+                      totalMinutes: Number(response?.total_minutes || 0),
+                      lastSession: response?.last_session || null
                     };
-                  })
-                );
-                console.log('Children progress data:', childrenProgressData);
-                setChildrenProgress(childrenProgressData);
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error parsing user data:', error);
+                  } catch (error) {
+                    console.error(`[Progress] Error fetching ${category} for child ${child.name}:`, error);
+                    return {
+                      category,
+                      totalSessions: 0,
+                      totalMinutes: 0,
+                      lastSession: null
+                    };
+                  }
+                })
+              );
+
+              // Calculate total sessions
+              const totalSessions = categoryData.reduce(
+                (sum, cat) => sum + cat.totalSessions,
+                0
+              );
+
+              console.log(`[Progress] Formatted data for child ${child.name}:`, {
+                totalSessions,
+                categories: categoryData,
+                moodHistory: childMoodHistory?.length
+              });
+
+              return {
+                id: child.id,
+                name: child.name,
+                totalSessions,
+                categories: categoryData,
+                dayStreak: calculateDayStreak(childMoodHistory || []),
+                moodHistory: childMoodHistory || []
+              };
+            })
+          );
+
+          console.log('[Progress] Setting children progress:', childrenProgressData);
+          setChildrenProgress(childrenProgressData);
+        } else {
+          console.log('[Progress] No linked children found');
+          setChildrenProgress([]);
         }
       }
 
-      // Load data in parallel for all categories
+      // Load user's own progress data
       const categories = ['meditation', 'anxiety-management', 'sleep-hygiene', 'stress-relief', 'self-care'];
-      console.log('Fetching progress for categories:', categories);
-      
       const [moodHistoryData, ...categoryData] = await Promise.all([
         ApiService.getMoodHistory(),
         ...categories.map(category => ApiService.getProgressByCategory(category))
       ]);
 
-      console.log('Received category data:', categoryData);
-
-      // Update mood history and calculate streak
+      // Update mood history and streak
       if (Array.isArray(moodHistoryData)) {
         const sortedHistory = moodHistoryData.sort((a, b) => 
           new Date(b.mood.timestamp).getTime() - new Date(a.mood.timestamp).getTime()
@@ -182,30 +192,24 @@ export default function ProgressScreen() {
       }
 
       // Process category progress data
-      const formattedCategoryProgress = categories.map((category, index) => {
-        const progress = {
-          category,
-          totalSessions: categoryData[index]?.total_sessions || 0,
-          totalMinutes: categoryData[index]?.total_minutes || 0,
-          lastSession: categoryData[index]?.last_session || null
-        };
-        console.log(`Progress for ${category}:`, progress);
-        return progress;
-      });
+      const formattedCategoryProgress = categories.map((category, index) => ({
+        category,
+        totalSessions: Number(categoryData[index]?.total_sessions || 0),
+        totalMinutes: Number(categoryData[index]?.total_minutes || 0),
+        lastSession: categoryData[index]?.last_session || null
+      }));
 
-      console.log('Setting category progress:', formattedCategoryProgress);
       setCategoryProgress(formattedCategoryProgress);
       
-      // Update total time from all categories
+      // Update total time
       const totalTimeFromCategories = formattedCategoryProgress.reduce(
-        (sum, cat) => sum + (cat.totalMinutes || 0), 
+        (sum, cat) => sum + cat.totalMinutes, 
         0
       );
-      console.log('Total time from all categories:', totalTimeFromCategories);
       setTotalTime(totalTimeFromCategories);
 
     } catch (error: any) {
-      console.error('Error loading progress data:', error);
+      console.error('[Progress] Error loading progress data:', error);
       setError('Unable to load progress data. Please try again later.');
     } finally {
       setIsLoading(false);
@@ -323,8 +327,8 @@ export default function ProgressScreen() {
           <Text style={styles.quickStatLabel}>Day Streak</Text>
         </View>
       </View>
-    </View>
-  );
+      </View>
+    );
 
   const renderChildProgress = (child: ChildProgress) => (
     <View key={child.id} style={styles.section}>
@@ -334,13 +338,13 @@ export default function ProgressScreen() {
           <Ionicons name="calendar-outline" size={32} color="#2196F3" />
           <Text style={styles.quickStatValue}>{child.totalSessions}</Text>
           <Text style={styles.quickStatLabel}>Total Sessions</Text>
-        </View>
+            </View>
         <View style={styles.quickStatItem}>
           <Ionicons name="flame-outline" size={32} color="#FF9800" />
           <Text style={styles.quickStatValue}>{child.dayStreak}</Text>
           <Text style={styles.quickStatLabel}>Day Streak</Text>
+          </View>
         </View>
-      </View>
 
       {/* Child's Category Progress */}
       {child.categories && child.categories.length > 0 && (
@@ -350,7 +354,7 @@ export default function ProgressScreen() {
             <View key={index} style={styles.categoryProgressItem}>
               <View style={[styles.categoryIcon, { backgroundColor: getCategoryColor(category.category) }]}>
                 <Ionicons name={getCategoryIcon(category.category)} size={24} color="#fff" />
-              </View>
+                </View>
               <View style={styles.categoryContent}>
                 <Text style={styles.categoryTitle}>
                   {category.category.split('-').map(word => 
@@ -366,9 +370,9 @@ export default function ProgressScreen() {
                   </Text>
                 )}
               </View>
-            </View>
-          ))}
-        </View>
+              </View>
+            ))}
+          </View>
       )}
 
       {/* Child's Recent Moods */}
@@ -384,12 +388,12 @@ export default function ProgressScreen() {
                   <Text style={styles.moodNote}>{entry.mood.note}</Text>
                 )}
                 <Text style={styles.moodTime}>{formatDate(entry.mood.timestamp)}</Text>
-              </View>
+        </View>
             </View>
           ))}
-        </View>
+            </View>
       )}
-    </View>
+            </View>
   );
 
   const renderMoodHistory = () => (
@@ -422,8 +426,8 @@ export default function ProgressScreen() {
   };
 
   const renderCategoryProgress = () => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Category Progress</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Category Progress</Text>
       {categoryProgress.length > 0 ? (
         categoryProgress.map((category, index) => (
           <View key={index} style={styles.categoryProgressItem}>
@@ -431,14 +435,14 @@ export default function ProgressScreen() {
               <Ionicons name={getCategoryIcon(category.category)} size={24} color="#fff" />
             </View>
             <View style={styles.categoryContent}>
-              <Text style={styles.categoryTitle}>
+                <Text style={styles.categoryTitle}>
                 {category.category.split('-').map(word => 
                   word.charAt(0).toUpperCase() + word.slice(1)
                 ).join(' ')}
-              </Text>
+                </Text>
               <Text style={styles.categoryStats}>
                 {category.totalSessions} {category.totalSessions === 1 ? 'session' : 'sessions'}
-              </Text>
+                </Text>
               {category.lastSession && (
                 <Text style={styles.lastSession}>
                   Last session: {formatDate(category.lastSession)}
@@ -472,7 +476,7 @@ export default function ProgressScreen() {
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
             <Text style={styles.retryButtonText}>Try Again</Text>
-        </TouchableOpacity>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -512,7 +516,19 @@ export default function ProgressScreen() {
         {renderQuickStats()}
         {renderCategoryProgress()}
         {renderMoodHistory()}
-        {isParent && childrenProgress.map(child => renderChildProgress(child))}
+        {isParent && childrenProgress.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { marginBottom: 8 }]}>Children's Progress</Text>
+            {childrenProgress.map((child, index) => (
+              <View key={child.id} style={[
+                styles.childProgressContainer,
+                index < childrenProgress.length - 1 && styles.childProgressDivider
+              ]}>
+                {renderChildProgress(child)}
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -728,5 +744,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+  },
+  childProgressContainer: {
+    marginBottom: 16,
+  },
+  childProgressDivider: {
+    borderBottomWidth: 1,
+    borderColor: '#ddd',
   },
 }); 

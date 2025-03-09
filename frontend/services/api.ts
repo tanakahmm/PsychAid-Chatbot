@@ -553,11 +553,11 @@ export const ApiService = {
   }) => {
     try {
       // Debug log
-      console.log('saveProgress received:', progressData);
+      console.log('[API] saveProgress received:', progressData);
 
       // Validate input
       if (!progressData || typeof progressData !== 'object') {
-        console.error('Invalid progress data:', progressData);
+        console.error('[API] Invalid progress data:', progressData);
         throw new Error('Progress data must be an object');
       }
 
@@ -573,7 +573,7 @@ export const ApiService = {
 
       // Validate required fields
       if (!cleanData.user_id || !cleanData.type || !cleanData.category) {
-        console.error('Missing required fields:', {
+        console.error('[API] Missing required fields:', {
           user_id: cleanData.user_id,
           type: cleanData.type,
           category: cleanData.category
@@ -582,17 +582,23 @@ export const ApiService = {
       }
 
       // Debug log
-      console.log('Sending progress data to server:', cleanData);
+      console.log('[API] Sending progress data to server:', cleanData);
 
-      // Make the API call
+      // Make the API call to save progress
       const response = await api.post('/progress', cleanData);
+      console.log('[API] Progress save response:', response.data);
 
-      // Debug log
-      console.log('Server response:', response.data);
+      // After saving progress, update category progress
+      const categoryUpdateResponse = await api.post(`/progress/category/${cleanData.category}`, {
+        user_id: cleanData.user_id,
+        duration: cleanData.duration,
+        timestamp: cleanData.timestamp
+      });
+      console.log('[API] Category progress update response:', categoryUpdateResponse.data);
 
       return response.data;
     } catch (error: any) {
-      console.error('Error saving progress:', {
+      console.error('[API] Error saving progress:', {
         message: error.response?.data?.detail || error.message,
         status: error.response?.status,
         data: error.response?.data,
@@ -632,27 +638,95 @@ export const ApiService = {
     }
   },
 
+  getChildCategoryStats: async (childId: string, category: string) => {
+    try {
+      console.log(`[API] Fetching category stats for child ${childId}, category: ${category}`);
+      const response = await api.get(`/progress/child/${childId}/category/${category}`);
+      
+      // Ensure consistent data structure and type conversion
+      const data = {
+        total_sessions: Number(response.data?.total_sessions || 0),
+        total_minutes: Number(response.data?.total_minutes || 0),
+        last_session: response.data?.last_session || null,
+        category
+      };
+      
+      console.log(`[API] Child category stats for ${childId}:`, data);
+      return data;
+    } catch (error: any) {
+      console.error(`[API] Error fetching child category stats for ${childId}:`, error);
+      // Try alternate endpoint if first one fails
+      try {
+        console.log(`[API] Attempting alternate endpoint for child ${childId}`);
+        const response = await api.get(`/progress/category/${category}?userId=${childId}`);
+        const data = {
+          total_sessions: Number(response.data?.total_sessions || 0),
+          total_minutes: Number(response.data?.total_minutes || 0),
+          last_session: response.data?.last_session || null,
+          category
+        };
+        console.log(`[API] Alternate endpoint success for ${childId}:`, data);
+        return data;
+      } catch (altError) {
+        console.error(`[API] Both endpoints failed for child ${childId}:`, altError);
+        return {
+          total_sessions: 0,
+          total_minutes: 0,
+          last_session: null,
+          category
+        };
+      }
+    }
+  },
+
   getProgressByCategory: async (category: string, userId?: string): Promise<any> => {
     try {
-      const response = await api.get(`/progress/category/${category}`, {
-        params: { userId }
-      });
+      let endpoint = userId 
+        ? `/progress/child/${userId}/category/${category}`
+        : `/progress/category/${category}`;
+
+      console.log(`[API] Fetching progress for category ${category}${userId ? ` and user ${userId}` : ''}`);
+      const response = await api.get(endpoint);
+      
       if (!response.data) {
+        console.warn(`[API] No progress data found for ${category}`);
         return {
           total_sessions: 0,
           total_minutes: 0,
           last_session: null
         };
       }
-      return response.data;
+
+      const data = {
+        total_sessions: Number(response.data.total_sessions || 0),
+        total_minutes: Number(response.data.total_minutes || 0),
+        last_session: response.data.last_session || null
+      };
+
+      console.log(`[API] Progress data:`, data);
+      return data;
     } catch (error: any) {
-      console.error('Error getting progress by category:', error);
-      if (error.response?.status === 401) {
-        await AsyncStorage.removeItem('token');
-        delete api.defaults.headers.common['Authorization'];
-        throw new Error('Session expired. Please login again.');
+      console.error(`[API] Error fetching ${category} progress:`, error);
+      
+      // If first endpoint fails, try the alternate endpoint
+      if (userId) {
+        try {
+          console.log(`[API] Trying alternate endpoint for child progress`);
+          const altResponse = await api.get(`/progress/category/${category}?userId=${userId}`);
+          
+          const data = {
+            total_sessions: Number(altResponse.data?.total_sessions || 0),
+            total_minutes: Number(altResponse.data?.total_minutes || 0),
+            last_session: altResponse.data?.last_session || null
+          };
+          
+          console.log(`[API] Alternate endpoint success:`, data);
+          return data;
+        } catch (altError) {
+          console.error(`[API] Both endpoints failed:`, altError);
+        }
       }
-      // Return default data structure on error
+      
       return {
         total_sessions: 0,
         total_minutes: 0,
@@ -684,16 +758,6 @@ export const ApiService = {
           last_session: null
         }
       };
-    }
-  },
-
-  getChildCategoryStats: async (childId: string, category: string) => {
-    try {
-      const response = await api.get(`/progress/child/${childId}/category/${category}`);
-      return response.data;
-    } catch (error: any) {
-      console.error('Get child category stats error:', error);
-      throw error;
     }
   },
 
