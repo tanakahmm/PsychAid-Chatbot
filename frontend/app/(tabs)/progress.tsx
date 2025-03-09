@@ -114,53 +114,15 @@ export default function ProgressScreen() {
             children.map(async (child) => {
               console.log(`[Progress] Fetching data for child: ${child.name} (${child.id})`);
               
-              // Get child's mood history
+              // Get child's mood history only
               const childMoodHistory = await ApiService.getChildMoodHistory(child.id);
               console.log(`[Progress] Child mood history:`, childMoodHistory);
-              
-              // Get child's progress data for all categories
-              const categories = ['meditation', 'anxiety-management', 'sleep-hygiene', 'stress-relief', 'self-care'];
-              const categoryData = await Promise.all(
-                categories.map(async (category) => {
-                  try {
-                    // Use the direct child progress endpoint
-                    const response = await ApiService.getProgressByCategory(category, child.id);
-                    console.log(`[Progress] Child ${child.name} ${category} data:`, response);
-                    return {
-                      category,
-                      totalSessions: Number(response?.total_sessions || 0),
-                      totalMinutes: Number(response?.total_minutes || 0),
-                      lastSession: response?.last_session || null
-                    };
-                  } catch (error) {
-                    console.error(`[Progress] Error fetching ${category} for child ${child.name}:`, error);
-                    return {
-                      category,
-                      totalSessions: 0,
-                      totalMinutes: 0,
-                      lastSession: null
-                    };
-                  }
-                })
-              );
-
-              // Calculate total sessions
-              const totalSessions = categoryData.reduce(
-                (sum, cat) => sum + cat.totalSessions,
-                0
-              );
-
-              console.log(`[Progress] Formatted data for child ${child.name}:`, {
-                totalSessions,
-                categories: categoryData,
-                moodHistory: childMoodHistory?.length
-              });
 
               return {
                 id: child.id,
                 name: child.name,
-                totalSessions,
-                categories: categoryData,
+                totalSessions: 0,
+                categories: [],
                 dayStreak: calculateDayStreak(childMoodHistory || []),
                 moodHistory: childMoodHistory || []
               };
@@ -332,54 +294,11 @@ export default function ProgressScreen() {
 
   const renderChildProgress = (child: ChildProgress) => (
     <View key={child.id} style={styles.section}>
-      <Text style={styles.sectionTitle}>{child.name}'s Progress</Text>
-      <View style={styles.quickStats}>
-        <View style={styles.quickStatItem}>
-          <Ionicons name="calendar-outline" size={32} color="#2196F3" />
-          <Text style={styles.quickStatValue}>{child.totalSessions}</Text>
-          <Text style={styles.quickStatLabel}>Total Sessions</Text>
-            </View>
-        <View style={styles.quickStatItem}>
-          <Ionicons name="flame-outline" size={32} color="#FF9800" />
-          <Text style={styles.quickStatValue}>{child.dayStreak}</Text>
-          <Text style={styles.quickStatLabel}>Day Streak</Text>
-          </View>
-        </View>
-
-      {/* Child's Category Progress */}
-      {child.categories && child.categories.length > 0 && (
-        <View style={styles.childCategoryProgress}>
-          <Text style={styles.subsectionTitle}>Category Progress</Text>
-          {child.categories.map((category, index) => (
-            <View key={index} style={styles.categoryProgressItem}>
-              <View style={[styles.categoryIcon, { backgroundColor: getCategoryColor(category.category) }]}>
-                <Ionicons name={getCategoryIcon(category.category)} size={24} color="#fff" />
-                </View>
-              <View style={styles.categoryContent}>
-                <Text style={styles.categoryTitle}>
-                  {category.category.split('-').map(word => 
-                    word.charAt(0).toUpperCase() + word.slice(1)
-                  ).join(' ')}
-                </Text>
-                <Text style={styles.categoryStats}>
-                  {category.totalSessions} {category.totalSessions === 1 ? 'session' : 'sessions'}
-                </Text>
-                {category.lastSession && (
-                  <Text style={styles.lastSession}>
-                    Last session: {formatDate(category.lastSession)}
-                  </Text>
-                )}
-              </View>
-              </View>
-            ))}
-          </View>
-      )}
-
+      <Text style={styles.sectionTitle}>{child.name}'s Recent Moods</Text>
       {/* Child's Recent Moods */}
-      {child.moodHistory && child.moodHistory.length > 0 && (
+      {child.moodHistory && child.moodHistory.length > 0 ? (
         <View style={styles.childMoodHistory}>
-          <Text style={styles.subsectionTitle}>Recent Moods</Text>
-          {child.moodHistory.slice(0, 3).map((entry, index) => (
+          {child.moodHistory.slice(0, 5).map((entry, index) => (
             <View key={index} style={styles.moodEntry}>
               <View style={[styles.moodIndicator, { backgroundColor: getMoodColor(entry.mood.mood) }]} />
               <View style={styles.moodContent}>
@@ -388,12 +307,14 @@ export default function ProgressScreen() {
                   <Text style={styles.moodNote}>{entry.mood.note}</Text>
                 )}
                 <Text style={styles.moodTime}>{formatDate(entry.mood.timestamp)}</Text>
-        </View>
+              </View>
             </View>
           ))}
-            </View>
+        </View>
+      ) : (
+        <Text style={styles.emptyText}>No mood entries yet</Text>
       )}
-            </View>
+    </View>
   );
 
   const renderMoodHistory = () => (

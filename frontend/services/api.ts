@@ -543,67 +543,13 @@ export const ApiService = {
   },
 
   // Progress tracking endpoints
-  saveProgress: async (progressData: {
-    type: string;
-    category: string;
-    duration: number;
-    timestamp: string;
-    exercise_id?: string;
-    user_id: string;
-  }) => {
+  saveProgress: async (progressData: any) => {
     try {
-      // Debug log
-      console.log('[API] saveProgress received:', progressData);
-
-      // Validate input
-      if (!progressData || typeof progressData !== 'object') {
-        console.error('[API] Invalid progress data:', progressData);
-        throw new Error('Progress data must be an object');
-      }
-
-      // Create a clean data object with explicit type conversions
-      const cleanData = {
-        type: String(progressData.type || ''),
-        category: String(progressData.category || ''),
-        duration: Number(progressData.duration || 0),
-        timestamp: String(progressData.timestamp || new Date().toISOString()),
-        user_id: String(progressData.user_id || ''),
-        ...(progressData.exercise_id ? { exercise_id: String(progressData.exercise_id) } : {})
-      };
-
-      // Validate required fields
-      if (!cleanData.user_id || !cleanData.type || !cleanData.category) {
-        console.error('[API] Missing required fields:', {
-          user_id: cleanData.user_id,
-          type: cleanData.type,
-          category: cleanData.category
-        });
-        throw new Error('Missing required fields');
-      }
-
-      // Debug log
-      console.log('[API] Sending progress data to server:', cleanData);
-
-      // Make the API call to save progress
-      const response = await api.post('/progress', cleanData);
-      console.log('[API] Progress save response:', response.data);
-
-      // After saving progress, update category progress
-      const categoryUpdateResponse = await api.post(`/progress/category/${cleanData.category}`, {
-        user_id: cleanData.user_id,
-        duration: cleanData.duration,
-        timestamp: cleanData.timestamp
-      });
-      console.log('[API] Category progress update response:', categoryUpdateResponse.data);
-
+      // Only make one POST request to /progress
+      const response = await api.post('/progress', progressData);
       return response.data;
     } catch (error: any) {
-      console.error('[API] Error saving progress:', {
-        message: error.response?.data?.detail || error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-        originalError: error
-      });
+      console.error('Save progress error:', error);
       throw error;
     }
   },
