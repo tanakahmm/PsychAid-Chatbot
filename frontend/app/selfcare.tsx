@@ -26,9 +26,9 @@ interface TimerState {
 export default function SelfCareScreen() {
   const [showTimer, setShowTimer] = useState(false);
   const [timer, setTimer] = useState<TimerState>({
-    duration: 3, // 15 minutes default
+    duration: 300, // 15 minutes default
     isActive: false,
-    timeLeft: 3,
+    timeLeft: 300,
   });
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
