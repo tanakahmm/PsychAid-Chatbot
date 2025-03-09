@@ -9,6 +9,7 @@ import {
   Dimensions,
   Alert,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -289,8 +290,8 @@ export default function ProgressScreen() {
           <Text style={styles.quickStatLabel}>Day Streak</Text>
         </View>
       </View>
-      </View>
-    );
+    </View>
+  );
 
   const renderChildProgress = (child: ChildProgress) => (
     <View key={child.id} style={styles.section}>
@@ -378,6 +379,55 @@ export default function ProgressScreen() {
     </View>
   );
 
+  const renderAchievements = () => {
+    const achievements = [
+      {
+        title: "Early Bird",
+        description: "Complete a self-care session in the morning",
+        icon: "sunny-outline",
+        unlocked: categoryProgress.some(cat => cat.totalSessions > 0)
+      },
+      {
+        title: "Consistency Master",
+        description: "Maintain a 3-day streak",
+        icon: "trophy-outline",
+        unlocked: dayStreak >= 3
+      },
+      {
+        title: "Mindfulness Explorer",
+        description: "Try all self-care categories",
+        icon: "leaf-outline",
+        unlocked: categoryProgress.every(cat => cat.totalSessions > 0)
+      }
+    ];
+
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Achievements</Text>
+        <View style={styles.achievementsContainer}>
+          {achievements.map((achievement, index) => (
+            <View key={index} style={styles.achievementCard}>
+              <View style={[
+                styles.achievementIcon,
+                { backgroundColor: achievement.unlocked ? '#4CAF50' : '#E0E0E0' }
+              ]}>
+                <Ionicons
+                  name={achievement.icon as keyof typeof Ionicons.glyphMap}
+                  size={24}
+                  color="#fff"
+                />
+              </View>
+              <View style={styles.achievementContent}>
+                <Text style={styles.achievementTitle}>{achievement.title}</Text>
+                <Text style={styles.achievementDescription}>{achievement.description}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -435,6 +485,7 @@ export default function ProgressScreen() {
         </TouchableOpacity>
 
         {renderQuickStats()}
+        {renderAchievements()}
         {renderCategoryProgress()}
         {renderMoodHistory()}
         {isParent && childrenProgress.length > 0 && (
@@ -672,5 +723,45 @@ const styles = StyleSheet.create({
   childProgressDivider: {
     borderBottomWidth: 1,
     borderColor: '#ddd',
+  },
+  achievementsContainer: {
+    marginTop: 8,
+  },
+  achievementCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  achievementIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  achievementContent: {
+    flex: 1,
+  },
+  achievementTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  achievementDescription: {
+    fontSize: 14,
+    color: '#666',
   },
 }); 

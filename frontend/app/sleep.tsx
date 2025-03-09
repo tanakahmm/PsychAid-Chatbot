@@ -8,6 +8,8 @@ import {
   ScrollView,
   Modal,
   Alert,
+  Platform,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,11 +28,79 @@ interface TimerState {
 export default function SleepScreen() {
   const [showTimer, setShowTimer] = useState(false);
   const [timer, setTimer] = useState<TimerState>({
-    duration: 600, // 10 minutes default
+    duration: 600,
     isActive: false,
     timeLeft: 600,
   });
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const celebrationValue = useRef(new Animated.Value(0)).current;
+
+  const presetDurations = [
+    { label: '5 min', seconds: 300 },
+    { label: '10 min', seconds: 600 },
+    { label: '15 min', seconds: 900 },
+    { label: '20 min', seconds: 1200 },
+  ];
+
+  const quotes = [
+    {
+      text: "Sleep is the best meditation.",
+      author: "Dalai Lama"
+    },
+    {
+      text: "A good laugh and a long sleep are the two best cures for anything.",
+      author: "Irish Proverb"
+    },
+    {
+      text: "Your future depends on your dreams, so go to sleep.",
+      author: "Mesut Barazany"
+    },
+    {
+      text: "Sleep is the golden chain that ties health and our bodies together.",
+      author: "Thomas Dekker"
+    }
+  ];
+
+  const [currentQuote, setCurrentQuote] = useState(quotes[0]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentQuote(prevQuote => {
+        const currentIndex = quotes.findIndex(q => q.text === prevQuote.text);
+        const nextIndex = (currentIndex + 1) % quotes.length;
+        return quotes[nextIndex];
+      });
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const setDuration = (seconds: number) => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    setTimer({
+      duration: seconds,
+      isActive: false,
+      timeLeft: seconds,
+    });
+  };
+
+  const startCelebrationAnimation = () => {
+    celebrationValue.setValue(0);
+    Animated.sequence([
+      Animated.timing(celebrationValue, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.timing(celebrationValue, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      })
+    ]).start();
+  };
 
   const startTimer = () => {
     if (timerRef.current) {
@@ -66,6 +136,7 @@ export default function SleepScreen() {
 
   const handleTimerComplete = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    startCelebrationAnimation();
     
     try {
       const userId = await AsyncStorage.getItem('user_id');
@@ -162,6 +233,11 @@ export default function SleepScreen() {
         </View>
       </LinearGradient>
 
+      <View style={styles.quoteContainer}>
+        <Text style={styles.quoteText}>{currentQuote.text}</Text>
+        <Text style={styles.quoteAuthor}>- {currentQuote.author}</Text>
+      </View>
+
       <ScrollView style={styles.content}>
         <Image
           source={require('../assets/images/sleep.jpeg')}
@@ -204,7 +280,47 @@ export default function SleepScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+            <Animated.View style={[
+              styles.celebration,
+              {
+                transform: [
+                  {
+                    scale: celebrationValue.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [0, 1.2, 1]
+                    })
+                  }
+                ],
+                opacity: celebrationValue
+              }
+            ]}>
+              <Ionicons name="star" size={100} color="#FFD700" />
+              <Text style={styles.celebrationText}>Sweet Dreams!</Text>
+            </Animated.View>
+            
             <Text style={styles.timerText}>{formatTime(timer.timeLeft)}</Text>
+            
+            {!timer.isActive && (
+              <View style={styles.presetContainer}>
+                {presetDurations.map((preset, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.presetButton,
+                      timer.duration === preset.seconds && styles.presetButtonActive
+                    ]}
+                    onPress={() => setDuration(preset.seconds)}
+                  >
+                    <Text style={[
+                      styles.presetButtonText,
+                      timer.duration === preset.seconds && styles.presetButtonTextActive
+                    ]}>
+                      {preset.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
             
             <View style={styles.timerControls}>
               <TouchableOpacity
@@ -373,5 +489,74 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  quoteContainer: {
+    backgroundColor: '#EDE7F6',
+    padding: 16,
+    margin: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  quoteText: {
+    fontSize: 16,
+    fontStyle: 'italic',
+    color: '#4527A0',
+    lineHeight: 24,
+    textAlign: 'center',
+  },
+  quoteAuthor: {
+    fontSize: 14,
+    color: '#5E35B1',
+    textAlign: 'right',
+    marginTop: 8,
+  },
+  presetContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: 20,
+    gap: 10,
+  },
+  presetButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#673AB7',
+  },
+  presetButtonActive: {
+    backgroundColor: '#673AB7',
+  },
+  presetButtonText: {
+    color: '#673AB7',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  presetButtonTextActive: {
+    color: '#fff',
+  },
+  celebration: {
+    position: 'absolute',
+    top: '20%',
+    alignSelf: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  celebrationText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFD700',
+    marginTop: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
 }); 

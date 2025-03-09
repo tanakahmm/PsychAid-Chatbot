@@ -8,6 +8,8 @@ import {
   ScrollView,
   Modal,
   Alert,
+  Platform,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,11 +28,79 @@ interface TimerState {
 export default function AnxietyScreen() {
   const [showTimer, setShowTimer] = useState(false);
   const [timer, setTimer] = useState<TimerState>({
-    duration: 180, // 3 minutes default
+    duration: 180,
     isActive: false,
     timeLeft: 180,
   });
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const celebrationValue = useRef(new Animated.Value(0)).current;
+
+  const presetDurations = [
+    { label: '3 min', seconds: 180 },
+    { label: '5 min', seconds: 300 },
+    { label: '10 min', seconds: 600 },
+    { label: '15 min', seconds: 900 },
+  ];
+
+  const quotes = [
+    {
+      text: "Anxiety is a thin stream of fear trickling through the mind. If encouraged, it cuts a channel into which all other thoughts are drained.",
+      author: "Arthur Somers Roche"
+    },
+    {
+      text: "You don't have to control your thoughts. You just have to stop letting them control you.",
+      author: "Dan Millman"
+    },
+    {
+      text: "Nothing diminishes anxiety faster than action.",
+      author: "Walter Anderson"
+    },
+    {
+      text: "Anxiety does not empty tomorrow of its sorrows, but only empties today of its strength.",
+      author: "Charles Spurgeon"
+    }
+  ];
+
+  const [currentQuote, setCurrentQuote] = useState(quotes[0]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentQuote(prevQuote => {
+        const currentIndex = quotes.findIndex(q => q.text === prevQuote.text);
+        const nextIndex = (currentIndex + 1) % quotes.length;
+        return quotes[nextIndex];
+      });
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const setDuration = (seconds: number) => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    setTimer({
+      duration: seconds,
+      isActive: false,
+      timeLeft: seconds,
+    });
+  };
+
+  const startCelebrationAnimation = () => {
+    celebrationValue.setValue(0);
+    Animated.sequence([
+      Animated.timing(celebrationValue, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.timing(celebrationValue, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      })
+    ]).start();
+  };
 
   const startTimer = () => {
     if (timerRef.current) {
@@ -66,6 +136,7 @@ export default function AnxietyScreen() {
 
   const handleTimerComplete = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    startCelebrationAnimation();
     
     try {
       const userId = await AsyncStorage.getItem('user_id');
@@ -161,6 +232,11 @@ export default function AnxietyScreen() {
         </View>
       </LinearGradient>
 
+      <View style={styles.quoteContainer}>
+        <Text style={styles.quoteText}>{currentQuote.text}</Text>
+        <Text style={styles.quoteAuthor}>- {currentQuote.author}</Text>
+      </View>
+
       <ScrollView style={styles.content}>
         <Image
           source={require('../assets/images/anxiety.jpeg')}
@@ -204,7 +280,47 @@ export default function AnxietyScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+            <Animated.View style={[
+              styles.celebration,
+              {
+                transform: [
+                  {
+                    scale: celebrationValue.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [0, 1.2, 1]
+                    })
+                  }
+                ],
+                opacity: celebrationValue
+              }
+            ]}>
+              <Ionicons name="star" size={100} color="#FFD700" />
+              <Text style={styles.celebrationText}>Great Job!</Text>
+            </Animated.View>
+            
             <Text style={styles.timerText}>{formatTime(timer.timeLeft)}</Text>
+            
+            {!timer.isActive && (
+              <View style={styles.presetContainer}>
+                {presetDurations.map((preset, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.presetButton,
+                      timer.duration === preset.seconds && styles.presetButtonActive
+                    ]}
+                    onPress={() => setDuration(preset.seconds)}
+                  >
+                    <Text style={[
+                      styles.presetButtonText,
+                      timer.duration === preset.seconds && styles.presetButtonTextActive
+                    ]}>
+                      {preset.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
             
             <View style={styles.timerControls}>
               <TouchableOpacity
@@ -373,5 +489,74 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  quoteContainer: {
+    backgroundColor: '#E3F2FD',
+    padding: 16,
+    margin: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  quoteText: {
+    fontSize: 16,
+    fontStyle: 'italic',
+    color: '#1565C0',
+    lineHeight: 24,
+    textAlign: 'center',
+  },
+  quoteAuthor: {
+    fontSize: 14,
+    color: '#1976D2',
+    textAlign: 'right',
+    marginTop: 8,
+  },
+  presetContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: 20,
+    gap: 10,
+  },
+  presetButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#2196F3',
+  },
+  presetButtonActive: {
+    backgroundColor: '#2196F3',
+  },
+  presetButtonText: {
+    color: '#2196F3',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  presetButtonTextActive: {
+    color: '#fff',
+  },
+  celebration: {
+    position: 'absolute',
+    top: '20%',
+    alignSelf: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  celebrationText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFD700',
+    marginTop: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
 }); 

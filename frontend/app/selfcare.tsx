@@ -8,6 +8,8 @@ import {
   ScrollView,
   Modal,
   Alert,
+  Platform,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,11 +28,30 @@ interface TimerState {
 export default function SelfCareScreen() {
   const [showTimer, setShowTimer] = useState(false);
   const [timer, setTimer] = useState<TimerState>({
-    duration: 300, // 15 minutes default
+    duration: 300,
     isActive: false,
     timeLeft: 300,
   });
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const celebrationValue = useRef(new Animated.Value(0)).current;
+
+  const presetDurations = [
+    { label: '5 min', seconds: 300 },
+    { label: '10 min', seconds: 600 },
+    { label: '15 min', seconds: 900 },
+    { label: '20 min', seconds: 1200 },
+  ];
+
+  const setDuration = (seconds: number) => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    setTimer({
+      duration: seconds,
+      isActive: false,
+      timeLeft: seconds,
+    });
+  };
 
   const startTimer = () => {
     if (timerRef.current) {
@@ -64,8 +85,25 @@ export default function SelfCareScreen() {
     setTimer(prev => ({ ...prev, isActive: false, timeLeft: prev.duration }));
   };
 
+  const startCelebrationAnimation = () => {
+    celebrationValue.setValue(0);
+    Animated.sequence([
+      Animated.timing(celebrationValue, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.timing(celebrationValue, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      })
+    ]).start();
+  };
+
   const handleTimerComplete = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    startCelebrationAnimation();
     
     try {
       const userId = await AsyncStorage.getItem('user_id');
@@ -129,6 +167,39 @@ export default function SelfCareScreen() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const quotes = [
+    {
+      text: "Self-care is not selfish. You cannot serve from an empty vessel.",
+      author: "Eleanor Brown"
+    },
+    {
+      text: "Take time to do what makes your soul happy.",
+      author: "Anonymous"
+    },
+    {
+      text: "The most powerful relationship you will ever have is the relationship with yourself.",
+      author: "Steve Maraboli"
+    },
+    {
+      text: "Self-care is giving the world the best of you, instead of what's left of you.",
+      author: "Katie Reed"
+    }
+  ];
+
+  const [currentQuote, setCurrentQuote] = useState(quotes[0]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentQuote(prevQuote => {
+        const currentIndex = quotes.findIndex(q => q.text === prevQuote.text);
+        const nextIndex = (currentIndex + 1) % quotes.length;
+        return quotes[nextIndex];
+      });
+    }, 10000); // Rotate every 10 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Add cleanup on unmount
   useEffect(() => {
     return () => {
@@ -152,6 +223,11 @@ export default function SelfCareScreen() {
           <Text style={styles.headerSubtitle}>Take care of yourself</Text>
         </View>
       </LinearGradient>
+
+      <View style={styles.quoteContainer}>
+        <Text style={styles.quoteText}>{currentQuote.text}</Text>
+        <Text style={styles.quoteAuthor}>- {currentQuote.author}</Text>
+      </View>
 
       <ScrollView style={styles.content}>
         <Image
@@ -198,11 +274,51 @@ export default function SelfCareScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+            <Animated.View style={[
+              styles.celebration,
+              {
+                transform: [
+                  {
+                    scale: celebrationValue.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [0, 1.2, 1]
+                    })
+                  }
+                ],
+                opacity: celebrationValue
+              }
+            ]}>
+              <Ionicons name="star" size={100} color="#FFD700" />
+              <Text style={styles.celebrationText}>Great Job!</Text>
+            </Animated.View>
+            
             <Text style={styles.timerText}>{formatTime(timer.timeLeft)}</Text>
+            
+            {!timer.isActive && (
+              <View style={styles.presetContainer}>
+                {presetDurations.map((preset, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.presetButton,
+                      timer.duration === preset.seconds && styles.presetButtonActive
+                    ]}
+                    onPress={() => setDuration(preset.seconds)}
+                  >
+                    <Text style={[
+                      styles.presetButtonText,
+                      timer.duration === preset.seconds && styles.presetButtonTextActive
+                    ]}>
+                      {preset.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
             
             <View style={styles.timerControls}>
               <TouchableOpacity
-                style={styles.timerButton}
+                style={[styles.timerButton, timer.isActive && styles.timerButtonActive]}
                 onPress={timer.isActive ? pauseTimer : startTimer}
               >
                 <Ionicons
@@ -320,16 +436,25 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 24,
-    width: '80%',
+    borderRadius: 24,
+    padding: 32,
+    width: '90%',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   timerText: {
-    fontSize: 48,
+    fontSize: 64,
     fontWeight: 'bold',
     color: '#FF69B4',
-    marginBottom: 24,
+    marginBottom: 32,
+    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
   },
   timerControls: {
     flexDirection: 'row',
@@ -367,5 +492,77 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  presetContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: 20,
+    gap: 10,
+  },
+  presetButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#FF69B4',
+  },
+  presetButtonActive: {
+    backgroundColor: '#FF69B4',
+  },
+  presetButtonText: {
+    color: '#FF69B4',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  presetButtonTextActive: {
+    color: '#fff',
+  },
+  timerButtonActive: {
+    backgroundColor: '#ff4081',
+  },
+  quoteContainer: {
+    backgroundColor: '#FFF5E6',
+    padding: 16,
+    margin: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  quoteText: {
+    fontSize: 16,
+    fontStyle: 'italic',
+    color: '#666',
+    lineHeight: 24,
+    textAlign: 'center',
+  },
+  quoteAuthor: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'right',
+    marginTop: 8,
+  },
+  celebration: {
+    position: 'absolute',
+    top: '20%',
+    alignSelf: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  celebrationText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFD700',
+    marginTop: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
 }); 
