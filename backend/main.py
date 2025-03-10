@@ -1346,6 +1346,10 @@ async def refresh_token(
             status_code=500,
             detail="Failed to refresh token"
         )
+    
+@app.get("/backendHealth")
+async def backend_health():
+    return {"status": "OK"}
 
 @app.post("/exercises")
 async def create_exercise(

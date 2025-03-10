@@ -8,6 +8,6 @@ module.exports = {
   ...config,
   server: {
     port: 8081,
-    host: "192.168.0.168"
+    host: "192.168.0.169"
   }
 }; 

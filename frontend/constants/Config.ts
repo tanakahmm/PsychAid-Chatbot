@@ -18,15 +18,15 @@ const getLocalIpAddress = (): string => {
   
   // For iOS simulator
   if (Platform.OS === 'ios') {
-    return 'http://192.168.0.169:8000';
+    return 'http://172.20.10.2:8000';
   }
   
   // For Android emulator
   if (Platform.OS === 'android') {
-    return 'http://192.168.0.169:8000';
+    return 'http://172.20.10.2:8000';
   }
   
-  return 'http://192.168.0.169:8000';
+  return 'http://localhost:8000';
 };
 
 const Config: ConfigType = {
