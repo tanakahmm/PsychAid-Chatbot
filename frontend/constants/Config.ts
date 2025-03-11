@@ -13,12 +13,12 @@ interface ConfigType {
 const getLocalIpAddress = (): string => {
   // For physical iOS device or Android device
   if (!__DEV__) {
-    return 'https://your-production-api.com';
+    return 'https://psychaid-chatbot-1.onrender.com';
   }
   
   // For iOS simulator
   if (Platform.OS === 'ios') {
-    return 'http://172.20.10.4:8000';
+    return 'http://192.168.0.196:8000';
   }
   
   // For Android emulator
@@ -35,7 +35,7 @@ const Config: ConfigType = {
     timeout: 60000, // 60 seconds
   },
   production: {
-    apiUrl: 'https://your-production-api.com', // Replace with your production API URL
+    apiUrl: 'https://psychaid-chatbot-1.onrender.com',
     timeout: 30000, // 30 seconds
   },
 };
