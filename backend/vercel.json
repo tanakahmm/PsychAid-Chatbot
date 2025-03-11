@@ -1,4 +1,5 @@
 {
+    "version": 2,
     "installCommand": "pip install -r requirements.txt",
     "builds": [
       {
@@ -8,6 +9,9 @@
     ],
     "routes": [
       { "src": "/(.*)", "dest": "run.py" }
-    ]
+    ],
+    "env": {
+        "PYTHONUNBUFFERED": "1"
+    }
   }
   
