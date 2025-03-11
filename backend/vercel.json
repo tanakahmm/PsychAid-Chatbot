@@ -1,0 +1,13 @@
+{
+    "installCommand": "pip install -r requirements.txt",
+    "builds": [
+      {
+        "src": "run.py",
+        "use": "@vercel/python"
+      }
+    ],
+    "routes": [
+      { "src": "/(.*)", "dest": "run.py" }
+    ]
+  }
+  
